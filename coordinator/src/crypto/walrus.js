@@ -29,19 +29,20 @@ const TRANSIENT_DURABILITY_REASONS = new Set([
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Time limit for one Walrus CLI call. The call is synchronous, so a stalled call blocks the process.
-const WALRUS_CLI_TIMEOUT_MS = 30 * 60_000;
+// Time limit for one `walrus read`. The call is synchronous, so a stalled read blocks the process.
+// A store has no limit: a stopped store has an unknown outcome and keeps the wallet lock.
+const WALRUS_READ_TIMEOUT_MS = 30 * 60_000;
 
 function mib(n) {
   return `${(n / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-function execWalrusCli(args, { captureStdout = true } = {}) {
+function execWalrusCli(args, { captureStdout = true, timeoutMs } = {}) {
   try {
     return execFileSync('walrus', args, {
       encoding: 'utf8',
       maxBuffer: WALRUS_CLI_MAX_BUFFER,
-      timeout: WALRUS_CLI_TIMEOUT_MS,
+      timeout: timeoutMs,
       stdio: ['ignore', captureStdout ? 'pipe' : 'ignore', 'inherit'],
     }) || '';
   } catch (e) {
@@ -49,7 +50,7 @@ function execWalrusCli(args, { captureStdout = true } = {}) {
       throw new Error('walrus CLI not found on PATH; install it with suiup and configure its Sui wallet before coordinator blob I/O');
     }
     if (e?.code === 'ETIMEDOUT') {
-      throw new Error(`the walrus CLI did not complete in ${WALRUS_CLI_TIMEOUT_MS / 60_000} minutes`);
+      throw new Error(`the walrus CLI did not complete in ${timeoutMs / 60_000} minutes`);
     }
     throw e;
   }
@@ -179,7 +180,7 @@ async function readContentBlobToFile(network, contentBlobId, outFile) {
   const short = contentBlobId.slice(0, 10);
   try {
     log(`  walrus cli read ${short}… downloading`);
-    execWalrusCli(['--context', network, 'read', contentBlobId, '--out', tmp], { captureStdout: false });
+    execWalrusCli(['--context', network, 'read', contentBlobId, '--out', tmp], { captureStdout: false, timeoutMs: WALRUS_READ_TIMEOUT_MS });
 
     fs.renameSync(tmp, outFile);
     const size = fs.statSync(outFile).size;
