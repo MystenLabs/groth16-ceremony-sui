@@ -96,16 +96,16 @@ test('runVerifySteps rejects malformed inputs and filesystem errors', { timeout:
     assert.match(result.reason, /verification failed/);
   });
 
-  await t.test('the attestor accepts a blob only if the CLI can extend it', async () => {
-    // These are the CLI steps that the next contributor runs on an accepted head.
-    const cliCanExtend = async (bytes) => {
+  await t.test('the attestor and the CLI agree on an honest, an inflated, and a padded blob', async () => {
+    // Run the CLI steps of the next contributor. Return the error message, or null.
+    const cliExtendError = async (bytes) => {
       try {
         const p2u = await decompress(new Uint8Array(bytes), snLog);
         const next = await contribute(p2u, 'next participant', 'next entropy', snLog);
         await compress(next.bytes, snLog);
-        return true;
-      } catch {
-        return false;
+        return null;
+      } catch (error) {
+        return error?.message || String(error);
       }
     };
     const honest = fs.readFileSync(subP2c);
@@ -119,8 +119,14 @@ test('runVerifySteps rejects malformed inputs and filesystem errors', { timeout:
       const file = path.join(tmp, `${label}.p2c`);
       fs.writeFileSync(file, bytes);
       const verdict = await runVerifySteps({ ...args, subPath: file });
+      const cliError = await cliExtendError(bytes);
       assert.equal(verdict.ok, expected, `attestor verdict for ${label}: ${verdict.reason}`);
-      assert.equal(await cliCanExtend(bytes), expected, `CLI result for ${label}`);
+      if (expected) {
+        assert.equal(cliError, null, `CLI result for ${label}`);
+      } else {
+        assert.match(verdict.reason, /Reading out of bounds/);
+        assert.match(cliError, /Reading out of bounds/);
+      }
     }
   });
 
@@ -188,8 +194,8 @@ test('checkSubmissionSize enforces a fixed upper bound', () => {
 });
 
 // Exception handling covers only the failures that code can catch. A V8
-// heap-OOM abort kills the process. This test fills a small worker heap with a
-// blob that contains millions of empty sections.
+// heap-OOM abort kills the process. One subtest fills a small worker heap to
+// cause that abort.
 test('runVerifyStepsIsolated survives a blob that kills the process it parses in', { timeout: 180_000 }, async (t) => {
   const prevCap = process.env.VERIFY_MAX_OLD_SPACE_MB;
   process.env.VERIFY_MAX_OLD_SPACE_MB = '128';

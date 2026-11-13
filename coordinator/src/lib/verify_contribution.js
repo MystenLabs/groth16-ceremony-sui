@@ -20,16 +20,11 @@ import { readBlob, resolveBlob } from '../crypto/walrus.js';
 
 const WORKER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify_worker.js');
 
-// Ceiling for the isolated verify. Has to sit above what a legitimate 2^21
-// verify needs (assemble + verifyFromInit peak in the low GBs) and below the
-// host's RAM, so that a blob whose declared section count or section size drives
-// an unbounded allocation dies as a bounded child instead of taking the
-// coordinator with it. It is a cap, not a reservation.
-//
-// Wall-clock ceiling. Not every hostile input crashes: a bogus n8q in the header
-// sends the parser into a multi-GB allocation plus a scan over ~4e9 bytes, which
-// stalls rather than dies.
+// Heap limit for the isolated verification. It must be above the need of a
+// legitimate 2^21 run (low GBs) and below the host RAM. It is a limit, not a reservation.
+// A blob that fills the heap stops the child, not the coordinator.
 const maxOldSpaceMb = () => Number(process.env.VERIFY_MAX_OLD_SPACE_MB) || 8192;
+// Time limit for the isolated verification. It stops a child that an input keeps busy.
 export const verificationTimeoutMs = () => Number(process.env.VERIFY_TIMEOUT_MS) || 10 * 60 * 1000;
 
 const STEP_LABELS = {
