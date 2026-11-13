@@ -38,17 +38,23 @@ export async function runVerifySteps({ headPath, subPath, baseZkey, ptau, workdi
   // Note: Exceptions thrown by snarkjs.js leave the slot Pending for operator attention.
   // TODO: Should we wire it up so that we receive a message on Slack when the below throws (assuming its easy to setup)?
   try {
-    let result = await snarkStep('extends', () => checkExtendsHead(headPath, subPath));
+    // Read the submission through the memory reader, as the contributor CLI does.
+    // The disk reader returns zeros for a read past the end of a file.
+    let result = await snarkStep('load', () => ({ type: 'mem', data: new Uint8Array(fs.readFileSync(subPath)) }));
+    if (!result.ok) return result;
+    const submission = result.value;
+
+    result = await snarkStep('extends', () => checkExtendsHead(headPath, submission));
     if (!result.ok) return result;
 
     const p2u = { type: 'mem' };
-    result = await snarkStep('decompress', () => decompressParams(subPath, p2u, snarkLog));
+    result = await snarkStep('decompress', () => decompressParams(submission, p2u, snarkLog));
     if (!result.ok) return result;
     result = await snarkStep('assemble', () => assembleZkey(baseZkey, p2u, fullPath, snarkLog));
     if (!result.ok) return result;
     result = await snarkStep('verifyFromInit', () => verifyFromInit(baseZkey, ptau, fullPath, snarkLog));
     if (!result.ok) return result;
-    result = await snarkStep('hash', () => readContributionInfo(subPath));
+    result = await snarkStep('hash', () => readContributionInfo(submission));
     if (!result.ok) return result;
 
     const contributionHash = result.value.hashes.at(-1);

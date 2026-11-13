@@ -16,6 +16,7 @@ import {
 } from '../src/lib/verify_contribution.js';
 
 import { runVerifySteps } from '../src/crypto/verify_contribution.js';
+import { contribute, compress, decompress } from '../../cli/src/crypto.js';
 
 const snLog = { info() {}, debug() {}, warn() {}, error() {} };
 
@@ -95,6 +96,55 @@ test('runVerifySteps rejects malformed inputs and filesystem errors', { timeout:
     assert.match(result.reason, /verification failed/);
   });
 
+  await t.test('the attestor accepts a blob only if the CLI can extend it', async () => {
+    // These are the CLI steps that the next contributor runs on an accepted head.
+    const cliCanExtend = async (bytes) => {
+      try {
+        const p2u = await decompress(new Uint8Array(bytes), snLog);
+        const next = await contribute(p2u, 'next participant', 'next entropy', snLog);
+        await compress(next.bytes, snLog);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const honest = fs.readFileSync(subP2c);
+    // The header declares one section more than the file contains.
+    const inflated = Buffer.from(honest);
+    inflated.writeUInt32LE(inflated.readUInt32LE(8) + 1, 8);
+    const padded = Buffer.concat([honest, Buffer.alloc(16)]);
+
+    const cases = [['honest', honest, true], ['inflated-count', inflated, false], ['trailing-bytes', padded, true]];
+    for (const [label, bytes, expected] of cases) {
+      const file = path.join(tmp, `${label}.p2c`);
+      fs.writeFileSync(file, bytes);
+      const verdict = await runVerifySteps({ ...args, subPath: file });
+      assert.equal(verdict.ok, expected, `attestor verdict for ${label}: ${verdict.reason}`);
+      assert.equal(await cliCanExtend(bytes), expected, `CLI result for ${label}`);
+    }
+  });
+
+  await t.test('a section that declares more bytes than the file contains rejects', async () => {
+    const bytes = fs.readFileSync(subP2c);
+    const header = bytes.subarray(0, 12);
+    const sections = [];
+    for (let offset = 12; offset < bytes.length;) {
+      const end = offset + 12 + Number(bytes.readBigUInt64LE(offset + 4));
+      sections.push({ id: bytes.readUInt32LE(offset), bytes: bytes.subarray(offset, end) });
+      offset = end;
+    }
+    // Put section 8 last. Then only its body goes past the end of the file.
+    const last = Buffer.from(sections.find((section) => section.id === 8).bytes);
+    last.writeBigUInt64LE(2n ** 30n, 4);
+    const others = sections.filter((section) => section.id !== 8).map((section) => section.bytes);
+    const oversized = path.join(tmp, 'oversized-section.p2c');
+    fs.writeFileSync(oversized, Buffer.concat([header, ...others, last]));
+
+    const result = await runVerifySteps({ ...args, subPath: oversized });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /verification failed \(decompress:/);
+  });
+
   await t.test('corrupt compressed points reject through full verification', async () => {
     const corrupt = path.join(tmp, 'corrupt-points.p2c');
     const bytes = fs.readFileSync(subP2c);
@@ -137,10 +187,9 @@ test('checkSubmissionSize enforces a fixed upper bound', () => {
   assert.equal(checkSubmissionSize(undefined).ok, false);
 });
 
-// Exception propagation only covers failures that surface as catchable
-// exceptions. A blob whose header declares an absurd
-// section count drives the parser into an unbounded allocation, and a V8
-// heap-OOM abort is process-fatal: no try/catch can see it.
+// Exception handling covers only the failures that code can catch. A V8
+// heap-OOM abort kills the process. This test fills a small worker heap with a
+// blob that contains millions of empty sections.
 test('runVerifyStepsIsolated survives a blob that kills the process it parses in', { timeout: 180_000 }, async (t) => {
   const prevCap = process.env.VERIFY_MAX_OLD_SPACE_MB;
   process.env.VERIFY_MAX_OLD_SPACE_MB = '128';
@@ -179,13 +228,29 @@ test('runVerifyStepsIsolated survives a blob that kills the process it parses in
   await snarkjs.zKey.compressV2Params(contribP2u, subP2c, snLog);
   const args = { headPath: headP2c, baseZkey, ptau, workdir: tmp, expectedHash: Buffer.from(contributionHash).toString('hex') };
 
-  await t.test('an unbounded section count is a reject, not a coordinator death', async () => {
-    // 'p2c\0' + version=1 + nSections=0xFFFFFFFF
-    const evil = path.join(tmp, 'evil.p2c');
+  await t.test('an unbounded section count is a reject, and the worker stays alive', async () => {
+    // 'p2c\0' + version=1 + nSections=0xFFFFFFFF, with no sections after the header.
+    const evil = path.join(tmp, 'evil-count.p2c');
     fs.writeFileSync(evil, Buffer.from('70326300010000 00ffffffff'.replace(/ /g, ''), 'hex'));
     const r = await runVerifyStepsIsolated({ ...args, subPath: evil });
     assert.equal(r.ok, false);
-    assert.match(r.reason, /malformed submission/);
+    assert.match(r.reason, /verification failed \(extends: Reading out of bounds\)/);
+    assert.deepEqual(Object.keys(r.timings), ['load', 'extends']);
+  });
+
+  await t.test('a blob that fills the worker heap is a reject, not a coordinator death', async () => {
+    // 'p2c\0' + version=1 + 3,000,000 empty sections that the file does contain.
+    const count = 3_000_000;
+    const bytes = Buffer.alloc(12 + 12 * count);
+    bytes.write('p2c\0', 0, 'latin1');
+    bytes.writeUInt32LE(1, 4);
+    bytes.writeUInt32LE(count, 8);
+    for (let i = 0; i < count; i++) bytes.writeUInt32LE(1, 12 + 12 * i);
+    const evil = path.join(tmp, 'evil-heap.p2c');
+    fs.writeFileSync(evil, bytes);
+    const r = await runVerifyStepsIsolated({ ...args, subPath: evil });
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /malformed submission \(verify process died/);
   });
 
   await t.test('a local artifact problem rejects through the worker', async () => {
