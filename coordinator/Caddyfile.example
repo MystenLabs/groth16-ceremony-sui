@@ -1,0 +1,32 @@
+zkceremony.sui.io {
+    handle /healthz {
+        respond "ceremony proxy ready
+" 200
+    }
+
+    # Only these public assets go in this directory; never serve a run directory.
+    @status_page path /status /status/
+    handle @status_page {
+        root * /var/www/zkceremony-status
+        rewrite * /status_page.html
+        header {
+            Cache-Control "no-store"
+            X-Content-Type-Options "nosniff"
+            Referrer-Policy "no-referrer"
+            Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+        }
+        file_server
+    }
+    handle /status.js {
+        root * /var/www/zkceremony-status
+        rewrite * /status_page.js
+        header Cache-Control "no-store"
+        header X-Content-Type-Options "nosniff"
+        file_server
+    }
+
+    # Includes /status.json, funding, telemetry, heartbeats, and queue activity.
+    handle {
+        reverse_proxy 127.0.0.1:8090
+    }
+}

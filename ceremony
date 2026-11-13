@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Keep this list equal to the cli engines range and the CI test matrix.
+supported='22, 24, or 26'
+help='With nvm: nvm install 24 && nvm use 24. Or download it: https://nodejs.org/en/download'
+
+if ! command -v node >/dev/null 2>&1; then
+  printf 'Install Node.js %s, then run this command again.\n%s\n' "$supported" "$help" >&2
+  exit 1
+fi
+
+major="$(node -p 'process.versions.node.split(".")[0]')"
+case "$major" in
+  22|24|26) ;;
+  *)
+    printf 'This ceremony supports Node.js %s. You have Node.js %s.\n%s\n' "$supported" "$major" "$help" >&2
+    exit 1
+    ;;
+esac
+
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec node "$repo_dir/cli/bin/launch.js" "$@"

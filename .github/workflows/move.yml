@@ -1,0 +1,39 @@
+name: Move
+
+# The sui toolchain is a heavy install, so only run when the contract changes.
+on:
+  push:
+    branches: [main]
+    paths: ['move/**', '.github/workflows/move.yml']
+  pull_request:
+    paths: ['move/**', '.github/workflows/move.yml']
+
+jobs:
+  test:
+    name: sui move test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUI_COMPONENT: sui@testnet
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install suiup
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # The framework deps in Move.lock are git-fetched on first build.
+      - name: Cache Move dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.move
+          key: move-${{ hashFiles('move/Move.lock') }}
+          restore-keys: move-
+
+      - name: Install sui
+        run: suiup install "$SUI_COMPONENT" -y
+
+      - run: sui --version
+      - run: sui move test
+        working-directory: move

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ceremony monitor</title>
+  <style>
+    /* Colors and layout adapted from the v1 MystenLabs/zk-ceremoy-site theme. */
+    :root {
+      color-scheme: light;
+      --ink: #182435;
+      --muted: #566873;
+      --line: #e3e6e8;
+      --blue: #4ca3ff;
+      --link: #1f6493;
+      --paper: #fff;
+      --bg: #f3f4f5;
+      --shadow: 1px 2px 8px 2px rgba(21, 82, 123, .05);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .site-header { display: flex; justify-content: center; padding: 26px 20px; }
+    .site-header svg { display: block; width: 210px; height: 28px; }
+    main { width: calc(100% - 64px); max-width: 1440px; margin: 0 auto 32px; padding: 42px 48px 28px; border-radius: 16px; background: var(--bg); }
+    .content { max-width: 1120px; margin: auto; }
+    .hero { text-align: center; margin: 0 auto 32px; }
+    .eyebrow { color: var(--link); font-size: 14px; font-weight: 500; }
+    h1 { margin: 12px 0; color: #111; font-size: clamp(30px, 4vw, 48px); font-weight: 500; line-height: 1.15; letter-spacing: -.035em; }
+    h1 span { color: var(--blue); }
+    h2 { margin: 0; color: #383f47; font-size: 18px; font-weight: 500; }
+    p { margin: 8px 0; }
+    .intro { color: var(--muted); margin: 12px 0 16px; }
+    .network { display: inline-block; border-radius: 100px; padding: 5px 14px; background: var(--paper); color: var(--link); font-size: 12px; }
+    .health { display: flex; align-items: flex-start; gap: 14px; padding: 20px 24px; border: 1px solid #a5e8d6; border-radius: 12px; background: #f3fcf9; }
+    .health[data-tone=warning] { background: #fff8e2; border-color: #eadcae; }
+    .health[data-tone=bad] { background: #ffece6; border-color: #f2c8b9; }
+    .dot { flex: 0 0 10px; height: 10px; margin-top: 7px; border-radius: 50%; background: #008c65; }
+    .health[data-tone=warning] .dot { background: #8d6e15; }
+    .health[data-tone=bad] .dot { background: #b3431e; }
+    .health strong { color: #383f47; font-size: 17px; font-weight: 600; }
+    .health p { margin: 3px 0; color: var(--muted); }
+    .health small { color: var(--muted); }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+    .card { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 12px; padding: 18px 24px; border: 1px solid transparent; border-radius: 100px; background: var(--paper); }
+    .label { color: var(--muted); font-size: 13px; font-weight: 500; }
+    .card .label { grid-column: 1; }
+    .value { grid-column: 2; grid-row: 1 / 3; color: var(--blue); font-size: 26px; font-weight: 500; line-height: 1.2; letter-spacing: -.035em; }
+    .hint { color: var(--muted); font-size: 12px; }
+    .card .hint { grid-column: 1; margin-top: 4px; font-size: 11px; }
+    .panel { margin-top: 20px; padding: 26px; border: 1px solid transparent; border-radius: 12px; background: var(--paper); box-shadow: var(--shadow); }
+    .panel-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; list-style: none; padding: 0; margin: 24px 0 28px; }
+    .phases li { border-top: 2px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 13px; }
+    .phases li.active { border-color: var(--blue); color: var(--link); font-weight: 600; }
+    .phases li.done { border-color: #a0b6c3; }
+    .details { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+    .details p { margin: 6px 0; }
+    .mono { font-family: "Red Hat Mono", ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+    .identifier { padding: 10px 12px; border-radius: 8px; background: #f3f6f8; }
+    .muted { color: var(--muted); }
+    .table-wrap { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; text-align: left; font-size: 14px; }
+    th { color: var(--muted); font-size: 12px; font-weight: 500; }
+    th, td { padding: 14px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th:first-child, td:first-child { padding-left: 0; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .empty { padding: 28px 0; text-align: center; color: var(--muted); }
+    footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    a { color: var(--link); }
+    button { padding: 9px 18px; border: 1px solid transparent; border-radius: 100px; background: #e0efff; color: var(--link); cursor: pointer; font: inherit; font-weight: 500; }
+    button:hover { background: #cee5fc; }
+    button:focus-visible, a:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .data-stale .panel, .data-stale .card { border-color: #c3c5c8; border-style: dashed; }
+    @media (max-width: 1100px) {
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .site-header { padding: 24px 16px; }
+      main { width: calc(100% - 24px); padding: 28px 16px 24px; }
+      .hero { margin-bottom: 24px; }
+      .metrics { gap: 12px; }
+      .card { display: block; padding: 18px; border-radius: 20px; }
+      .value { margin: 8px 0; font-size: 26px; }
+      .details { grid-template-columns: 1fr; gap: 20px; }
+      .panel { padding: 18px; }
+      .panel-title { align-items: flex-start; }
+      .panel-title .hint { max-width: 95px; text-align: right; }
+      .health { padding: 16px; }
+      .phases li { font-size: 12px; }
+      .address-cell { min-width: 150px; }
+    }
+  </style>
+  <script src="/status.js" defer></script>
+</head>
+<body>
+<!-- Wordmark: MystenLabs/zk-ceremoy-site, public/icons/logo.svg, commit 81ad20302d0e5169ffd0038160c1b8d379d49198. -->
+<header class="site-header"><svg role="img" aria-label="Sui zkCeremony" width="210" height="28" viewBox="0 0 210 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_90_8963)">
+<path d="M52.5061 6.16602C52.9219 6.16602 53.2821 6.30917 53.5785 6.59337V6.59266C53.8809 6.87721 54.0359 7.22511 54.0359 7.62936C54.0359 8.03361 53.8809 8.38186 53.5785 8.66606C53.2821 8.95026 52.9219 9.09341 52.5061 9.09341C52.0903 9.09341 51.7277 8.95061 51.4257 8.66676L51.4246 8.66571C51.1278 8.38116 50.9763 8.03291 50.9763 7.62971C50.9763 7.22651 51.1278 6.87861 51.4246 6.59371L51.4257 6.59266C51.7277 6.30917 52.0903 6.16602 52.5061 6.16602Z" fill="#4CA3FF"/>
+<path d="M34.4878 14.8306C35.0436 15.0381 35.5738 15.3216 36.0778 15.68L36.0782 15.6811C36.5958 16.0395 37.0218 16.5001 37.356 17.0608C37.6966 17.6323 37.8628 18.3271 37.8628 19.138C37.8628 20.0771 37.6164 20.929 37.1226 21.6895C36.6333 22.4518 35.9186 23.0538 34.9858 23.4976C34.0548 23.9432 32.9303 24.163 31.6178 24.163C30.3935 24.163 29.326 23.9652 28.4188 23.5652C27.519 23.1658 26.805 22.6065 26.2824 21.8855V21.8848C25.7658 21.1635 25.4743 20.3266 25.4067 19.3788L25.3955 19.2234H27.7948L27.8063 19.3561C27.8588 19.9665 28.0629 20.4628 28.4122 20.8537C28.7737 21.2461 29.2304 21.5411 29.7866 21.7371C30.3525 21.9293 30.9629 22.0259 31.6185 22.0259C32.3825 22.0259 33.064 21.902 33.6649 21.6577C34.2662 21.4074 34.737 21.0641 35.0821 20.6301C35.4233 20.1954 35.5945 19.6889 35.5945 19.1044C35.5945 18.5724 35.4468 18.1528 35.1615 17.8325C34.8647 17.4993 34.4713 17.2249 33.9761 17.0121C33.4717 16.7951 32.9257 16.6047 32.3377 16.4413H32.3367L30.2594 15.8477C28.9256 15.4641 27.8595 14.9139 27.0692 14.1915C26.267 13.4579 25.868 12.4972 25.868 11.3229C25.868 10.3496 26.1316 9.49486 26.6622 8.76441C27.1945 8.03361 27.9078 7.46871 28.7968 7.06901C29.6914 6.66406 30.677 6.46281 31.7826 6.46281C32.8883 6.46281 33.8767 6.66126 34.7447 7.06131C35.6106 7.45506 36.3011 7.99721 36.8121 8.68951C37.3301 9.38391 37.6035 10.1739 37.6318 11.0545L37.6367 11.2043H35.3796L35.3645 11.0762C35.2707 10.2838 34.8931 9.67336 34.2256 9.23516C33.5505 8.79241 32.7168 8.56666 31.7168 8.56666C30.985 8.56666 30.3515 8.68496 29.8128 8.91736C29.2777 9.15046 28.8654 9.46826 28.5697 9.86761C28.2806 10.2649 28.136 10.7157 28.136 11.2242C28.136 11.6505 28.2368 12.0086 28.4325 12.3054C28.6404 12.6064 28.9053 12.8587 29.2294 13.0628C29.5615 13.2661 29.9098 13.4348 30.2738 13.5689C30.6441 13.6994 30.9836 13.8051 31.2919 13.8867H31.2926L33.0062 14.3479H33.0066C33.4521 14.4648 33.946 14.6258 34.4878 14.8306Z" fill="#4CA3FF"/>
+<path d="M53.6072 10.9141H51.3718V23.8655H53.6072V10.9141Z" fill="#4CA3FF"/>
+<path d="M46.7619 20.4159C47.0878 19.935 47.2561 19.3141 47.2561 18.5437V10.9145H49.4916V23.8658H47.2561V21.9226C46.9506 22.4679 46.5204 22.939 45.9692 23.3356L45.9685 23.3363C45.3122 23.8025 44.4894 24.0307 43.5104 24.0307C42.6974 24.0307 41.9687 23.8529 41.3292 23.4924H41.3282C40.6852 23.1249 40.1826 22.5747 39.8197 21.8481C39.455 21.1131 39.2768 20.1961 39.2768 19.1044V10.9141H41.5123V18.9725C41.5123 19.8674 41.7618 20.565 42.2476 21.0819C42.7401 21.6006 43.3662 21.861 44.1369 21.861C44.5951 21.861 45.0651 21.7438 45.5481 21.5047H45.5488C46.029 21.2695 46.4333 20.9087 46.7612 20.4169L46.7619 20.4159Z" fill="#4CA3FF"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M17.5283 11.6777V11.6791C18.67 13.1113 19.3529 14.9257 19.3529 16.8987C19.3529 18.8716 18.6497 20.7399 17.4765 22.1819L17.3754 22.3062L17.3488 22.1483C17.326 22.0143 17.2991 21.8785 17.2683 21.742C16.6813 19.1625 14.7682 16.9505 11.62 15.1595C9.49408 13.9534 8.27713 12.5009 7.95758 10.851C7.75109 9.78388 7.90474 8.71218 8.20118 7.79414C8.49763 6.87644 8.93863 6.10749 9.31313 5.64479L10.5378 4.14714C10.7527 3.88464 11.1545 3.88464 11.3694 4.14714L17.5287 11.6781L17.5283 11.6777ZM19.4656 10.1815V10.1808L11.2567 0.14385C11.0999 -0.0479499 10.8066 -0.0479499 10.6498 0.14385L2.4409 10.1811V10.1818L2.4143 10.2151C0.904048 12.0893 0 14.4714 0 17.0646C0 23.1038 4.90384 27.9999 10.9532 27.9999C17.0026 27.9999 21.9065 23.1038 21.9065 17.0646C21.9065 14.4714 21.0024 12.0893 19.4918 10.2147L19.4649 10.1815H19.4656ZM4.40544 11.6452L5.13974 10.7471L5.16179 10.913C5.17929 11.0442 5.20064 11.1762 5.22584 11.3088C5.70079 13.8015 7.39794 15.8798 10.2354 17.4895C12.7018 18.893 14.1379 20.5072 14.5516 22.2775C14.7241 23.0163 14.7549 23.7433 14.6804 24.3789L14.6758 24.4181L14.6401 24.4356C13.5271 24.9795 12.2755 25.2847 10.9529 25.2847C6.31399 25.2847 2.55325 21.5302 2.55325 16.8987C2.55325 14.9103 3.24659 13.083 4.40509 11.6455L4.40544 11.6452Z" fill="#4CA3FF"/>
+</g>
+<path d="M63.6892 23V21.0398L70.4392 12.5767V12.4659H63.9108V9.90909H74.2148V12.0142L67.7886 20.3324V20.4432H74.4363V23H63.6892ZM80.1487 18.892L80.1402 15.1676H80.6345L85.339 9.90909H88.9442L83.1572 16.3523H82.518L80.1487 18.892ZM77.3362 23V5.54545H80.4214V23H77.3362ZM85.5521 23L81.2907 17.0426L83.3703 14.8693L89.2425 23H85.5521ZM106.077 11.4347H102.889C102.799 10.9119 102.631 10.4489 102.387 10.0455C102.142 9.63636 101.838 9.28977 101.475 9.00568C101.111 8.72159 100.696 8.50852 100.23 8.36648C99.7702 8.21875 99.273 8.14489 98.7389 8.14489C97.79 8.14489 96.9491 8.38352 96.2162 8.86079C95.4832 9.33239 94.9094 10.0256 94.4946 10.9403C94.0798 11.8494 93.8724 12.9602 93.8724 14.2727C93.8724 15.608 94.0798 16.733 94.4946 17.6477C94.915 18.5568 95.4889 19.2443 96.2162 19.7102C96.9491 20.1705 97.7872 20.4006 98.7304 20.4006C99.2531 20.4006 99.7417 20.3324 100.196 20.196C100.657 20.054 101.068 19.8466 101.432 19.5739C101.801 19.3011 102.111 18.9659 102.361 18.5682C102.617 18.1705 102.793 17.7159 102.889 17.2045L106.077 17.2216C105.958 18.0511 105.699 18.8295 105.301 19.5568C104.909 20.2841 104.395 20.9261 103.759 21.483C103.122 22.0341 102.378 22.4659 101.526 22.7784C100.674 23.0852 99.7275 23.2386 98.6878 23.2386C97.1537 23.2386 95.7844 22.8835 94.5798 22.1733C93.3753 21.4631 92.4264 20.4375 91.7332 19.0966C91.04 17.7557 90.6934 16.1477 90.6934 14.2727C90.6934 12.392 91.0429 10.7841 91.7417 9.44886C92.4406 8.10795 93.3923 7.08239 94.5969 6.37216C95.8014 5.66193 97.165 5.30682 98.6878 5.30682C99.6594 5.30682 100.563 5.44318 101.398 5.71591C102.233 5.98864 102.978 6.3892 103.631 6.91761C104.284 7.44034 104.821 8.08239 105.242 8.84375C105.668 9.59943 105.946 10.4631 106.077 11.4347ZM114.632 23.2557C113.319 23.2557 112.186 22.983 111.231 22.4375C110.282 21.8864 109.552 21.108 109.041 20.1023C108.529 19.0909 108.274 17.9006 108.274 16.5312C108.274 15.1847 108.529 14.0028 109.041 12.9858C109.558 11.9631 110.279 11.1676 111.206 10.5994C112.132 10.0256 113.22 9.73864 114.47 9.73864C115.277 9.73864 116.038 9.86932 116.754 10.1307C117.475 10.3864 118.112 10.7841 118.663 11.3239C119.22 11.8636 119.657 12.5511 119.975 13.3864C120.294 14.2159 120.453 15.2045 120.453 16.3523V17.2983H109.723V15.2188H117.495C117.49 14.6278 117.362 14.1023 117.112 13.642C116.862 13.1761 116.512 12.8097 116.063 12.5426C115.62 12.2756 115.103 12.142 114.512 12.142C113.882 12.142 113.328 12.2955 112.85 12.6023C112.373 12.9034 112.001 13.3011 111.734 13.7955C111.473 14.2841 111.339 14.821 111.333 15.4062V17.2216C111.333 17.983 111.473 18.6364 111.751 19.1818C112.029 19.7216 112.419 20.1364 112.919 20.4261C113.419 20.7102 114.004 20.8523 114.674 20.8523C115.123 20.8523 115.529 20.7898 115.893 20.6648C116.257 20.5341 116.572 20.3438 116.839 20.0938C117.106 19.8438 117.308 19.5341 117.444 19.1648L120.325 19.4886C120.143 20.25 119.796 20.9148 119.285 21.483C118.779 22.0455 118.132 22.483 117.342 22.7955C116.552 23.1023 115.649 23.2557 114.632 23.2557ZM123.063 23V9.90909H126.054V12.0909H126.191C126.429 11.3352 126.838 10.7528 127.418 10.3438C128.003 9.92898 128.671 9.72159 129.421 9.72159C129.591 9.72159 129.782 9.73011 129.992 9.74716C130.208 9.75852 130.387 9.77841 130.529 9.80682V12.6449C130.398 12.5994 130.191 12.5597 129.907 12.5256C129.628 12.4858 129.358 12.4659 129.097 12.4659C128.534 12.4659 128.029 12.5881 127.58 12.8324C127.137 13.071 126.787 13.4034 126.532 13.8295C126.276 14.2557 126.148 14.7472 126.148 15.304V23H123.063ZM137.835 23.2557C136.522 23.2557 135.389 22.983 134.434 22.4375C133.485 21.8864 132.755 21.108 132.244 20.1023C131.733 19.0909 131.477 17.9006 131.477 16.5312C131.477 15.1847 131.733 14.0028 132.244 12.9858C132.761 11.9631 133.483 11.1676 134.409 10.5994C135.335 10.0256 136.423 9.73864 137.673 9.73864C138.48 9.73864 139.241 9.86932 139.957 10.1307C140.679 10.3864 141.315 10.7841 141.866 11.3239C142.423 11.8636 142.86 12.5511 143.179 13.3864C143.497 14.2159 143.656 15.2045 143.656 16.3523V17.2983H132.926V15.2188H140.698C140.693 14.6278 140.565 14.1023 140.315 13.642C140.065 13.1761 139.715 12.8097 139.267 12.5426C138.823 12.2756 138.306 12.142 137.715 12.142C137.085 12.142 136.531 12.2955 136.054 12.6023C135.576 12.9034 135.204 13.3011 134.937 13.7955C134.676 14.2841 134.542 14.821 134.536 15.4062V17.2216C134.536 17.983 134.676 18.6364 134.954 19.1818C135.233 19.7216 135.622 20.1364 136.122 20.4261C136.622 20.7102 137.207 20.8523 137.877 20.8523C138.326 20.8523 138.733 20.7898 139.096 20.6648C139.46 20.5341 139.775 20.3438 140.042 20.0938C140.309 19.8438 140.511 19.5341 140.647 19.1648L143.528 19.4886C143.346 20.25 143 20.9148 142.488 21.483C141.983 22.0455 141.335 22.483 140.545 22.7955C139.755 23.1023 138.852 23.2557 137.835 23.2557ZM146.266 23V9.90909H149.215V12.1335H149.368C149.641 11.3835 150.093 10.7983 150.723 10.3778C151.354 9.9517 152.107 9.73864 152.982 9.73864C153.868 9.73864 154.615 9.95455 155.223 10.3864C155.837 10.8125 156.269 11.3949 156.519 12.1335H156.655C156.945 11.4062 157.434 10.8267 158.121 10.3949C158.814 9.95739 159.635 9.73864 160.584 9.73864C161.789 9.73864 162.772 10.1193 163.533 10.8807C164.294 11.642 164.675 12.7528 164.675 14.2131V23H161.581V14.6903C161.581 13.8778 161.365 13.2841 160.934 12.9091C160.502 12.5284 159.973 12.3381 159.348 12.3381C158.604 12.3381 158.022 12.571 157.601 13.0369C157.186 13.4972 156.979 14.0966 156.979 14.8352V23H153.953V14.5625C153.953 13.8864 153.749 13.3466 153.34 12.9432C152.936 12.5398 152.408 12.3381 151.755 12.3381C151.311 12.3381 150.908 12.4517 150.544 12.679C150.181 12.9006 149.891 13.2159 149.675 13.625C149.459 14.0284 149.351 14.5 149.351 15.0398V23H146.266ZM173.515 23.2557C172.237 23.2557 171.129 22.9744 170.191 22.4119C169.254 21.8494 168.527 21.0625 168.009 20.0511C167.498 19.0398 167.242 17.858 167.242 16.5057C167.242 15.1534 167.498 13.9687 168.009 12.9517C168.527 11.9347 169.254 11.1449 170.191 10.5824C171.129 10.0199 172.237 9.73864 173.515 9.73864C174.794 9.73864 175.902 10.0199 176.839 10.5824C177.777 11.1449 178.501 11.9347 179.012 12.9517C179.529 13.9687 179.788 15.1534 179.788 16.5057C179.788 17.858 179.529 19.0398 179.012 20.0511C178.501 21.0625 177.777 21.8494 176.839 22.4119C175.902 22.9744 174.794 23.2557 173.515 23.2557ZM173.532 20.7841C174.225 20.7841 174.805 20.5937 175.271 20.2131C175.737 19.8267 176.083 19.3097 176.311 18.6619C176.544 18.0142 176.66 17.2926 176.66 16.4972C176.66 15.696 176.544 14.9716 176.311 14.3239C176.083 13.6705 175.737 13.1506 175.271 12.7642C174.805 12.3778 174.225 12.1847 173.532 12.1847C172.822 12.1847 172.231 12.3778 171.759 12.7642C171.294 13.1506 170.944 13.6705 170.711 14.3239C170.484 14.9716 170.37 15.696 170.37 16.4972C170.37 17.2926 170.484 18.0142 170.711 18.6619C170.944 19.3097 171.294 19.8267 171.759 20.2131C172.231 20.5937 172.822 20.7841 173.532 20.7841ZM185.492 15.3295V23H182.407V9.90909H185.355V12.1335H185.509C185.81 11.4006 186.29 10.8182 186.949 10.3864C187.614 9.95455 188.435 9.73864 189.412 9.73864C190.316 9.73864 191.103 9.93182 191.773 10.3182C192.449 10.7045 192.972 11.2642 193.341 11.9972C193.716 12.7301 193.901 13.6193 193.895 14.6648V23H190.81V15.142C190.81 14.267 190.583 13.5824 190.128 13.0881C189.679 12.5937 189.057 12.3466 188.262 12.3466C187.722 12.3466 187.242 12.4659 186.821 12.7045C186.407 12.9375 186.08 13.2756 185.841 13.7188C185.608 14.1619 185.492 14.6989 185.492 15.3295ZM198.48 27.9091C198.06 27.9091 197.671 27.875 197.313 27.8068C196.96 27.7443 196.679 27.6705 196.469 27.5852L197.185 25.1818C197.634 25.3125 198.034 25.375 198.387 25.3693C198.739 25.3636 199.049 25.2528 199.316 25.0369C199.588 24.8267 199.818 24.4744 200.006 23.9801L200.27 23.2727L195.523 9.90909H198.796L201.813 19.7955H201.949L204.975 9.90909H208.256L203.014 24.5852C202.77 25.2784 202.446 25.8722 202.043 26.3665C201.639 26.8665 201.145 27.2472 200.56 27.5085C199.98 27.7756 199.287 27.9091 198.48 27.9091Z" fill="#4CA3FF"/>
+<defs>
+<clipPath id="clip0_90_8963">
+<rect width="54.0399" height="27.9999" fill="white"/>
+</clipPath>
+</defs>
+</svg></header>
+<main id="monitor">
+<div class="content">
+  <div class="hero">
+    <div class="eyebrow">Ceremony monitor</div>
+    <h1><span>Sui zklogin v2</span><br>ceremony status</h1>
+    <p class="intro">Track contributions and the attestor’s latest activity.</p>
+    <span class="network" id="network">Connecting</span>
+  </div>
+  <section class="health" id="health" data-tone="warning" aria-live="polite" aria-atomic="true">
+    <span class="dot" aria-hidden="true"></span><div><strong id="health-title">Connecting to the attestor</strong><p id="health-detail">Waiting for the first status update…</p><small id="health-time"></small></div>
+  </section>
+  <noscript><p>Enable JavaScript to see live updates, or open <a href="/status.json">the status endpoint</a>.</p></noscript>
+  <div class="metrics">
+    <section class="card"><div class="label">Accepted contributions</div><div class="value" id="count">—</div><div class="hint" id="count-note">Recorded on Sui</div></section>
+    <section class="card"><div class="label">Contribution slot</div><div class="value" id="slot">—</div><div class="hint" id="slot-note">Waiting for ceremony data</div></section>
+    <section class="card"><div class="label">Contributors waiting</div><div class="value" id="queue">—</div><div class="hint">Approximate · recent heartbeats</div></section>
+    <section class="card"><div class="label">Attestor uptime</div><div class="value" id="uptime">—</div><div class="hint">Since this process started</div></section>
+  </div>
+  <section class="panel">
+    <div class="panel-title"><h2>Ceremony progress</h2><span class="hint" id="access">—</span></div>
+    <ol class="phases" id="phases"><li data-phase="Setup">01 / Setup</li><li data-phase="Phase2Contribute">02 / Contributions</li><li data-phase="Phase2Beacon">03 / Final beacon</li><li data-phase="Closed">04 / Closed</li></ol>
+    <div class="details">
+      <div><div class="label">Current contributor</div><p id="contributor">—</p><p class="mono muted" id="contributor-address"></p><p class="hint" id="deadline"></p></div>
+      <div><div class="label">Ceremony ID</div><p class="identifier mono" id="ceremony-id">—</p><div class="hint" id="chain-read">No chain observation yet</div></div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-title"><h2>Recent accepted contributions</h2><span class="hint">Latest 20 · newest first</span></div>
+    <div class="table-wrap"><table><thead><tr><th scope="col">#</th><th scope="col">Name</th><th scope="col">Contributor</th><th scope="col">Accepted (UTC)</th></tr></thead><tbody id="recent"></tbody></table></div>
+    <p class="empty" id="empty">Accepted contributions will appear here.</p>
+  </section>
+  <footer><span id="refresh-time">Refreshes automatically every 30 seconds</span><span><button id="refresh" type="button">Refresh now</button> &nbsp; <a href="/status.json">JSON status</a></span></footer>
+</div>
+</main>
+</body>
+</html>

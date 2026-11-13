@@ -1,0 +1,4 @@
+# Keep this runtime root present in fresh clones without committing private
+# keys, manifests, artifacts, blob caches, logs, or audit data.
+*
+!.gitignore

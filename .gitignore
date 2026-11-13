@@ -1,0 +1,14 @@
+node_modules/
+ceremony-work/
+move/build/
+*.log
+.DS_Store
+*.swp
+funding-secret.json
+funding-secret.json.*.tmp
+funding-payouts.jsonl
+funding.lock
+
+# Artifacts the organizer supplies locally (base zkey/ptau, test fixtures); keep only the README.
+coordinator/artifacts/*
+!coordinator/artifacts/README.md

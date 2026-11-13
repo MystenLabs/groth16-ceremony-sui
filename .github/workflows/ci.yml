@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  guards:
+    name: guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # The coordinator runs on one LTS major. The contributor CLI supports
+      # every LTS major that the test matrix below runs.
+      - name: enforce supported Node versions
+        run: |
+          node -e "
+            const fs = require('fs');
+            const expected = { coordinator: '>=24 <25', cli: '^22 || ^24 || ^26' };
+            for (const [pkg, range] of Object.entries(expected)) {
+              const actual = require('./' + pkg + '/package.json').engines?.node;
+              if (actual !== range) { console.error(pkg + ' engines.node:', actual, '(expected ' + range + ')'); process.exit(1); }
+            }
+            const nvmrc = fs.readFileSync('.nvmrc', 'utf8').trim();
+            if (nvmrc !== '24') { console.error('.nvmrc:', nvmrc, '(expected 24)'); process.exit(1); }
+            console.log('OK  Node versions enforced');
+          "
+
+      # The coordinator verifies exactly the bytes the CLI produces, so both
+      # must build against the same snarkjs commit.
+      - name: snarkjs pin matches across packages
+        run: |
+          node -e "
+            const c = require('./coordinator/package.json').dependencies.snarkjs;
+            const l = require('./cli/package.json').dependencies.snarkjs;
+            if (c !== l) { console.error('snarkjs pin mismatch'); console.error('  coordinator:', c); console.error('  cli:        ', l); process.exit(1); }
+            console.log('OK  snarkjs pin =', c);
+          "
+
+  test:
+    name: ${{ matrix.package }} / node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: coordinator, node: 24 }
+          # Keep this list equal to the cli engines range and the launcher check.
+          - { package: cli, node: 22 }
+          - { package: cli, node: 24 }
+          - { package: cli, node: 26 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            coordinator/package-lock.json
+            cli/package-lock.json
+      - run: npm ci
+        working-directory: ${{ matrix.package }}
+      # The coordinator integration test contributes through the CLI crypto code.
+      - name: install contributor dependencies for integration tests
+        if: matrix.package == 'coordinator'
+        run: npm ci
+        working-directory: cli
+      # Both packages keep their tests in test/*.test.js; cli has no test script.
+      - run: node --test test/*.test.js
+        working-directory: ${{ matrix.package }}

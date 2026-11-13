@@ -1,0 +1,29 @@
+{
+  "name": "ceremony-coordinator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Attestor / verifier server: watches the Ceremony object, verifies each contribution, accepts or rejects on-chain",
+  "bin": {
+    "ceremony-coordinator": "./src/attestor.js",
+    "ceremony-coordinator-key": "./src/key.js"
+  },
+  "scripts": {
+    "bench:walrus-cli": "node ../bench/walrus-cli.mjs",
+    "install:walrus": "sh scripts/install-walrus.sh",
+    "mock:ceremony": "bash scripts/mock-ceremony.sh",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2",
+    "@mysten/walrus": "^1",
+    "snarkjs": "git+https://github.com/MystenLabs/snarkjs.git#25fb16735310abb4ac36025ea09dbdd63976723a"
+  },
+  "devDependencies": {
+    "@iden3/binfileutils": "0.0.12",
+    "r1csfile": "0.0.48"
+  }
+}
