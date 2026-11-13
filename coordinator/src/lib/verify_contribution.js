@@ -3,7 +3,9 @@
 // and a size bound (both pre-download), then run the crypto:
 //   1. position — the blob extends the current head by exactly one contribution
 //      (v2paramsExtends; guards against building on an old head or a self-chain).
-//   2. validity — reinject the frozen base sections (3-7) to reform a full zkey,
+//   2. transcript — each entry is a plain contribution, and the last entry hash
+//      is the on-chain contribution hash.
+//   3. validity — reinject the frozen base sections (3-7) to reform a full zkey,
 //      then run snarkjs's full-chain verifier against the ptau (verifyFromInit).
 // Blobs are read via readBlob, which resolves the SharedBlob id, enforces the
 // durable blob policy, caches the content blob on disk, and returns a local path.

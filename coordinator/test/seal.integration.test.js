@@ -55,7 +55,7 @@ test('offline ceremony: genesis, CLI contribution, isolated verification, beacon
   await verifyBaseCircuit(baseZkey, headP2c);
   const verifyArgs = { headPath: genesisP2c, subPath: headP2c, baseZkey, ptau, workdir: tmp };
   const verified = await runVerifyStepsIsolated({ ...verifyArgs, expectedHash: contributed.hashHex });
-  assert.deepEqual(Object.keys(verified.timings), ['load', 'extends', 'decompress', 'assemble', 'verifyFromInit', 'hash']);
+  assert.deepEqual(Object.keys(verified.timings), ['load', 'extends', 'transcript', 'decompress', 'assemble', 'verifyFromInit']);
   for (const seconds of Object.values(verified.timings)) assert.ok(Number.isFinite(seconds) && seconds >= 0);
   assert.equal(verified.ok, true);
   await t.test('a failed verifyFromInit result rejects explicitly', async () => {

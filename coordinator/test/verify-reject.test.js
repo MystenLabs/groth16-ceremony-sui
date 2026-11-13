@@ -130,6 +130,69 @@ test('runVerifySteps rejects malformed inputs and filesystem errors', { timeout:
     }
   });
 
+  await t.test('a beacon entry in a submission rejects before the slow steps', async () => {
+    // Add a beacon entry to the honest contribution, as the seal step does.
+    const fullZkey = path.join(tmp, 'full.zkey');
+    const beaconZkey = path.join(tmp, 'beacon.zkey');
+    const beaconP2u = path.join(tmp, 'beacon.p2u');
+    const beaconP2c = path.join(tmp, 'beacon.p2c');
+    await snarkjs.zKey.assemble(baseZkey, contribP2u, fullZkey, snLog);
+    const beaconHash = await snarkjs.zKey.beacon(fullZkey, beaconZkey, 'beacon', 'ab'.repeat(32), 10, snLog);
+    await snarkjs.zKey.extract(beaconZkey, beaconP2u, snLog);
+    await snarkjs.zKey.compressV2Params(beaconP2u, beaconP2c, snLog);
+    // Add a plain contribution after the beacon entry.
+    const laterP2u = path.join(tmp, 'later.p2u');
+    const laterP2c = path.join(tmp, 'later.p2c');
+    const laterHash = await snarkjs.zKey.contribute(beaconP2u, laterP2u, 'later participant', 'later entropy', snLog);
+    await snarkjs.zKey.compressV2Params(laterP2u, laterP2c, snLog);
+
+    // Add a plain contribution to the honest head. Then change entry 1 to a beacon type.
+    // The entry hash does not include the type, so the extends check passes.
+    const secondP2u = path.join(tmp, 'second.p2u');
+    const secondP2c = path.join(tmp, 'second.p2c');
+    const forgedP2c = path.join(tmp, 'forged-type.p2c');
+    const secondHash = await snarkjs.zKey.contribute(contribP2u, secondP2u, 'second', 'second entropy', snLog);
+    await snarkjs.zKey.compressV2Params(secondP2u, secondP2c, snLog);
+    const second = fs.readFileSync(secondP2c);
+    const parts = [second.subarray(0, 12)];
+    for (let offset = 12; offset < second.length;) {
+      const end = offset + 12 + Number(second.readBigUInt64LE(offset + 4));
+      let body = second.subarray(offset + 12, end);
+      if (second.readUInt32LE(offset) === 10) {
+        // Entry 1 ends with: type (u32), parameter length (u32), then [1, 11, 'participant'].
+        const name = body.indexOf(Buffer.from('participant'));
+        const fields = Buffer.alloc(8);
+        fields.writeUInt32LE(1, 0);
+        fields.writeUInt32LE(13 + 36, 4);
+        const beacon = Buffer.concat([Buffer.from([2, 63, 3, 32]), Buffer.alloc(32, 0xab)]);
+        body = Buffer.concat([body.subarray(0, name - 10), fields, body.subarray(name - 2, name + 11), beacon, body.subarray(name + 11)]);
+      }
+      const header = Buffer.from(second.subarray(offset, offset + 12));
+      header.writeBigUInt64LE(BigInt(body.length), 4);
+      parts.push(header, body);
+      offset = end;
+    }
+    fs.writeFileSync(forgedP2c, Buffer.concat(parts));
+
+    const cases = [
+      ['the new entry is a beacon entry', subP2c, beaconP2c, beaconHash],
+      ['an earlier entry is a beacon entry', beaconP2c, laterP2c, laterHash],
+      ['an earlier plain entry is changed to a beacon type', subP2c, forgedP2c, secondHash],
+    ];
+    for (const [label, headPath, subPath, hash] of cases) {
+      const steps = [];
+      const result = await runVerifySteps({
+        ...args,
+        headPath,
+        subPath,
+        expectedHash: Buffer.from(hash).toString('hex'),
+        step: (key, fn) => { steps.push(key); return fn(); },
+      });
+      assert.deepEqual(result, { ok: false, reason: 'submission contains an entry that is not a plain contribution' }, label);
+      assert.deepEqual(steps, ['load', 'extends', 'transcript'], label);
+    }
+  });
+
   await t.test('a section that declares more bytes than the file contains rejects', async () => {
     const bytes = fs.readFileSync(subP2c);
     const header = bytes.subarray(0, 12);
