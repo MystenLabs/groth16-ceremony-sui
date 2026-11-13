@@ -47,7 +47,7 @@ import { requireAttestorHealthy } from '../src/health.js';
 import { CEREMONY_ID, readCeremonyConfig, resolveWorkdir, startRunLog, recordRunLog, redact } from '../src/run-context.js';
 import { createUi, formatDuration, visibleText } from '../src/ui.js';
 import { askLine, askHidden, askYesNo } from '../src/prompt.js';
-import { explainFailure, errorMessage } from '../src/failures.js';
+import { explainFailure, errorMessage, assertTurnOpen } from '../src/failures.js';
 import { renderResultCard } from '../src/result-card.js';
 
 // gRPC is the supported transport; JSON-RPC is deprecated (deactivation July 2026).
@@ -531,6 +531,7 @@ async function cmdContribute(ceremonyId, opts) {
 
     // 7. Upload.
     stage = 'upload';
+    assertTurnOpen(session.turnEndsAt, 'upload');
     ui.start('upload', `encoding ${fmtMB(p2c.length)}`);
     const up = await timed(() => uploadToWalrus(suiClient, keypair, network, net, p2c, walrusLog(ui)));
     timings.uploadsec = up.sec;
@@ -539,6 +540,7 @@ async function cmdContribute(ceremonyId, opts) {
 
     // 8. Submit and verify.
     stage = 'verify';
+    assertTurnOpen(session.turnEndsAt, 'submission');
     ui.start('verify', 'submitting on-chain');
     const sd = await submitContribution(suiClient, keypair, head.packageId, ceremonyId, blobId, hashHex, name);
     session.holdingTurn = false;
