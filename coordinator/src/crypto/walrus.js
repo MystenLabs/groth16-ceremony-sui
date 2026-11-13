@@ -248,16 +248,27 @@ async function storeBlob(network, client, file, label) {
 // Read a SharedBlob object and return the durability facts the verifier checks:
 // whether it's shared, plus the wrapped Blob's content id, certified epoch,
 // deletability, and storage end epoch. Returns ok=false for deterministic policy
-// failures; throws for Sui/Walrus read failures. Retries a few times, since a
-// freshly created object can briefly read as not-found while the fullnode indexes it.
+// failures, which include a missing object; throws for Sui/Walrus read failures.
+// resolveBlob tries a missing object again, since a fullnode can index a new object late.
 async function readSharedBlob(network, client, sharedBlobId) {
   let object;
   for (let i = 0; ; i++) {
-    try { ({ object } = await client.core.getObject({ objectId: sharedBlobId, include: { json: true, owner: true } })); break; }
-    catch (e) { if (i >= DURABILITY_RETRIES) throw e; await sleep(DURABILITY_RETRY_MS); }
+    try {
+      const { objects: [result] } = await client.core.getObjects({ objectIds: [sharedBlobId], include: { json: true, owner: true } });
+      // An Error value in the list is the fullnode answer for this object. A transport failure throws.
+      if (result instanceof Error) {
+        if (/not found|does not exist/i.test(result.message)) return { ok: false, reason: 'object not found' };
+        throw result;
+      }
+      object = result;
+      break;
+    } catch (e) {
+      if (i >= DURABILITY_RETRIES) throw e;
+      await sleep(DURABILITY_RETRY_MS);
+    }
   }
-  const expectedType = await sharedBlobType(network, client);
   if (!object) return { ok: false, reason: 'object not found' };
+  const expectedType = await sharedBlobType(network, client);
   const actualType = object.type ? normalizeStructTag(object.type) : '';
   if (actualType !== expectedType) {
     return { ok: false, reason: `object is ${object.type || 'unknown type'}, expected ${expectedType}` };

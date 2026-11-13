@@ -33,7 +33,7 @@
 // approve-r1cs   - an auditor attests the r1cs blob is the expected circuit
 // start-phase2   - upload genesis params, seed the head, open contributions
 // reject-pending - manually reject the current Pending contribution and reopen
-//                  the slot (escape hatch for when the attestor halts on it)
+//                  the slot (use it when the attestor cannot verify the submission)
 // finalize-phase2- draw the phase-2 final beacon and freeze contributions
 // seal           - the organizer's final contribution; uploads final params/zkey/vkey and closes
 // submit-final   - close with already-uploaded final params/zkey/vkey SharedBlob ids

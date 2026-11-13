@@ -3,7 +3,7 @@
 //
 // One final IPC response: a result or error, including locally measured timings.
 //
-// Every caught exception is rethrown by the parent for operator review.
+// The parent rethrows each caught exception. The attestor then tries again.
 
 import { runVerifySteps } from '../crypto/verify_contribution.js';
 import { log } from './config.js';

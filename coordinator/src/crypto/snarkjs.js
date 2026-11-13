@@ -27,8 +27,8 @@ const directStep = (_label, fn) => fn();
 // During contribution verification:
 // - ok: true => continue; accept the contribution once all checks succeed.
 // - ok: false => reject the contribution and continue the attestor loop.
-// Failures outside this wrapper can still throw, leaving the contribution
-// Pending and halting the attestor loop.
+// Failures outside this wrapper can still throw. The contribution then stays
+// Pending, and the attestor loop tries the verification again.
 export async function runContributionStepOrReject(operation, fn) {
   try {
     const value = await fn();
