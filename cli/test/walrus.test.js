@@ -24,11 +24,17 @@ test('aggregator downloads verify content before returning bytes', async (t) => 
 
   responseBytes = bytes.slice();
   responseBytes[0] ^= 1;
-  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId), /aggregator returned wrong blob/);
+  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), /aggregator returned wrong blob/);
 
   responseBytes = bytes.subarray(0, bytes.length - 1);
-  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId), /aggregator returned wrong blob/);
+  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), /aggregator returned wrong blob/);
 
   status = 503;
-  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId), /HTTP 503/);
+  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), /HTTP 503/);
+
+  // One failed try, then a good answer.
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => new Response(bytes, { status: ++calls === 1 ? 503 : 200 }));
+  assert.deepEqual(await fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), bytes);
+  assert.equal(calls, 2);
 });

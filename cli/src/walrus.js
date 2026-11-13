@@ -6,8 +6,19 @@ import { Transaction } from '@mysten/sui/transactions';
 import { WalrusClient, blobIdFromInt } from '@mysten/walrus';
 import { signTransaction } from './crypto.js';
 
-export async function fetchBlob(suiClient, networkName, net, blobId) {
-  const res = await fetch(`${net.aggregator}/v1/blobs/${blobId}`);
+// Download a blob. Each try has a time limit, because the turn continues during a stalled download.
+export async function fetchBlob(suiClient, networkName, net, blobId, { tries = 3, timeoutMs = 240_000, waitMs = 2000 } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await fetchBlobOnce(suiClient, networkName, net, blobId, timeoutMs); }
+    catch (e) {
+      if (attempt >= tries) throw e;
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+}
+
+async function fetchBlobOnce(suiClient, networkName, net, blobId, timeoutMs) {
+  const res = await fetch(`${net.aggregator}/v1/blobs/${blobId}`, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`aggregator ${blobId}: HTTP ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   const walrusClient = new WalrusClient({ network: networkName, suiClient });

@@ -29,6 +29,9 @@ const TRANSIENT_DURABILITY_REASONS = new Set([
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Time limit for one Walrus CLI call. The call is synchronous, so a stalled call blocks the process.
+const WALRUS_CLI_TIMEOUT_MS = 30 * 60_000;
+
 function mib(n) {
   return `${(n / 1024 / 1024).toFixed(1)} MiB`;
 }
@@ -38,11 +41,15 @@ function execWalrusCli(args, { captureStdout = true } = {}) {
     return execFileSync('walrus', args, {
       encoding: 'utf8',
       maxBuffer: WALRUS_CLI_MAX_BUFFER,
+      timeout: WALRUS_CLI_TIMEOUT_MS,
       stdio: ['ignore', captureStdout ? 'pipe' : 'ignore', 'inherit'],
     }) || '';
   } catch (e) {
     if (e?.code === 'ENOENT') {
       throw new Error('walrus CLI not found on PATH; install it with suiup and configure its Sui wallet before coordinator blob I/O');
+    }
+    if (e?.code === 'ETIMEDOUT') {
+      throw new Error(`the walrus CLI did not complete in ${WALRUS_CLI_TIMEOUT_MS / 60_000} minutes`);
     }
     throw e;
   }
