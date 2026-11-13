@@ -6,10 +6,37 @@ import { Transaction } from '@mysten/sui/transactions';
 import { WalrusClient, blobIdFromInt } from '@mysten/walrus';
 import { signTransaction } from './crypto.js';
 
-export async function fetchBlob(suiClient, networkName, net, blobId) {
-  const res = await fetch(`${net.aggregator}/v1/blobs/${blobId}`);
-  if (!res.ok) throw new Error(`aggregator ${blobId}: HTTP ${res.status}`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
+// Download a blob. A try stops when no data arrives for `stallMs`, because the turn continues during a stall.
+export async function fetchBlob(suiClient, networkName, net, blobId, { tries = 3, stallMs = 60_000, waitMs = 2000 } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await fetchBlobOnce(suiClient, networkName, net, blobId, stallMs); }
+    catch (e) {
+      if (attempt >= tries) throw e;
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+}
+
+async function fetchBlobOnce(suiClient, networkName, net, blobId, stallMs) {
+  const controller = new AbortController();
+  let timer;
+  // Start the stall timer again. A slow download that still moves has no time limit.
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(new Error(`aggregator sent no data for ${stallMs / 1000} seconds`)), stallMs);
+  };
+  let bytes;
+  arm();
+  try {
+    const res = await fetch(`${net.aggregator}/v1/blobs/${blobId}`, { signal: controller.signal });
+    if (!res.ok) throw new Error(`aggregator ${blobId}: HTTP ${res.status}`);
+    const chunks = [];
+    for await (const chunk of res.body) { chunks.push(chunk); arm(); }
+    const all = Buffer.concat(chunks);
+    bytes = new Uint8Array(all.buffer, all.byteOffset, all.length);
+  } finally {
+    clearTimeout(timer);
+  }
   const walrusClient = new WalrusClient({ network: networkName, suiClient });
   const { blobId: actualBlobId } = await walrusClient.computeBlobMetadata({ bytes });
   if (actualBlobId !== blobId) throw new Error(`aggregator returned wrong blob for ${blobId}`);

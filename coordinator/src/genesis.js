@@ -7,10 +7,8 @@
 //   node src/genesis.js verify --r1cs zklogin-o2.r1cs [--ptau artifacts/pot_final.ptau] [--out artifacts]
 //   node src/genesis.js clean [--out artifacts] [--dry-run]
 //
-// The adopted ptau is the public phase1/pot_final.ptau from:
-//   https://github.com/sui-foundation/zklogin-ceremony-contributions/tree/main/phase1
-// Its published BLAKE2b-512 / b2sum is the on-chain phase1_digest:
-//   516fdf98bef4ab474bf01e336c801b275bdb4c5209ad06351b1f1ebc6f7060b77c11c9adaf861a776e77c2eff9f22cb4dae29fcab12f97489a9f049339904b3c
+// coordinator/artifacts/README.md describes the phase-1 file (ptau).
+// Its BLAKE2b-512 / b2sum is the on-chain phase1_digest.
 //
 // g16s is memory-heavy for large circuits, so the snarkjs child gets a bigger
 // V8 heap.

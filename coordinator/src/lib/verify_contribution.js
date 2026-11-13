@@ -11,7 +11,7 @@
 // durable blob policy, caches the content blob on disk, and returns a local path.
 //
 // Explicit failures and all wrapped snarkjs exceptions reject under the policy
-// in crypto/snarkjs.js. Failures outside that wrapper can still halt for review.
+// in crypto/snarkjs.js. Failures outside that wrapper throw, and the attestor tries again.
 
 import path from 'node:path';
 import { fork } from 'node:child_process';
@@ -53,7 +53,7 @@ export function checkSubmissionSize(declaredSize) {
 
 // Run verification in a bounded child process.
 // - Child crash/OOM/timeout => reject the submission.
-// - Any reported exception => rethrow for operator review.
+// - Any reported exception => rethrow. The attestor then tries again.
 // The child returns all step timings with its final response.
 export function runVerifyStepsIsolated({ headPath, subPath, baseZkey, ptau, workdir, expectedHash }) {
   return new Promise((resolve, reject) => {
@@ -134,7 +134,7 @@ export async function verifyContribution({ network, client, sharedBlobId, headSh
   // Return:
   //   ok=true  -> accept the contribution
   //   ok=false -> reject the contribution
-  //   throw    -> verification could not finish; leave it Pending for review
+  //   throw    -> verification could not finish; the slot stays Pending and the attestor tries again
   //
   // The snarkjs wrapper normalizes explicit failures and all exceptions into
   // ok=false. Failures outside the wrapper still throw and leave the slot Pending.

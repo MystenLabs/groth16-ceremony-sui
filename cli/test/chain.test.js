@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { awaitVerdict, claimWhenOpen, readHead } from '../src/chain.js';
+import { awaitVerdict, claimWhenOpen, readHead, readHeadWithRetry } from '../src/chain.js';
 
 const CEREMONY_TYPE = '0x123::groth16_phase2::Ceremony';
 
@@ -259,4 +259,19 @@ test('readHead returns the hash and the time of each accepted contribution', asy
 test('readHead removes control characters from contributor names', async () => {
   const client = fakeClient([ceremonyJson({ chain: [{ contributor: '0xA', name: 'Eve\u001b[2Jx' }] })]);
   assert.equal((await readHead(client, '0xceremony')).chain[0].name, 'Eve[2Jx');
+});
+
+test('readHeadWithRetry reads again after a failed read and stops after the last try', async () => {
+  const client = fakeClient([ceremonyJson()]);
+  const getObject = client.core.getObject;
+  let failures = 1;
+  client.core.getObject = async (args) => {
+    if (failures-- > 0) throw new Error('fullnode unavailable');
+    return getObject(args);
+  };
+  assert.equal((await readHeadWithRetry(client, '0xceremony', { waitMs: 1 })).chainLen, 0);
+
+  failures = 3;
+  await assert.rejects(readHeadWithRetry(client, '0xceremony', { waitMs: 1 }), /fullnode unavailable/);
+  assert.equal(failures, 0);
 });

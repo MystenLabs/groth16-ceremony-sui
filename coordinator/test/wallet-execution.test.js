@@ -55,3 +55,15 @@ test('executor releases the lock after confirmed success or failure', async (t) 
     await withRunLock(workdir, () => {});
   }
 });
+
+test('executor releases the lock when the wait fails after a known outcome', async (t) => {
+  const { workdir, kp, tx } = setup(t);
+  const client = { core: {
+    executeTransaction: async ({ transaction }) => ({ Transaction: {
+      digest: await Transaction.from(transaction).getDigest(), status: { success: true },
+    } }),
+    waitForTransaction: async () => { throw new Error('wait timeout'); },
+  } };
+  await assert.rejects(exec(client, kp, tx), /wait timeout/);
+  await withRunLock(workdir, () => {});
+});

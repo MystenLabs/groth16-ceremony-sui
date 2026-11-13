@@ -119,5 +119,3 @@ export function loadIds(network, manifestPath, { required = [] } = {}) {
   for (const k of required) req(names[k], ids[k]);
   return { ...ids, dep, path: p };
 }
-
-export const PHASE1_URL = 'https://media.githubusercontent.com/media/sui-foundation/zklogin-ceremony-contributions/main/phase1/pot_final.ptau';

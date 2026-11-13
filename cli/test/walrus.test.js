@@ -24,11 +24,29 @@ test('aggregator downloads verify content before returning bytes', async (t) => 
 
   responseBytes = bytes.slice();
   responseBytes[0] ^= 1;
-  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId), /aggregator returned wrong blob/);
+  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), /aggregator returned wrong blob/);
 
   responseBytes = bytes.subarray(0, bytes.length - 1);
-  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId), /aggregator returned wrong blob/);
+  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), /aggregator returned wrong blob/);
 
   status = 503;
-  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId), /HTTP 503/);
+  await assert.rejects(fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), /HTTP 503/);
+
+  // One failed try, then a good answer.
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => new Response(bytes, { status: ++calls === 1 ? 503 : 200 }));
+  assert.deepEqual(await fetchBlob(suiClient, 'testnet', net, blobId, { waitMs: 1 }), bytes);
+  assert.equal(calls, 2);
+});
+
+test('a download stops when the aggregator sends no data', async (t) => {
+  const suiClient = new SuiGrpcClient({ network: 'testnet', baseUrl: 'https://sui.example' });
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', (_url, { signal }) => new Promise((_resolve, reject) => {
+    calls++;
+    signal.addEventListener('abort', () => reject(signal.reason));
+  }));
+  const net = { aggregator: 'https://aggregator.example' };
+  await assert.rejects(fetchBlob(suiClient, 'testnet', net, 'blob', { tries: 2, stallMs: 20, waitMs: 1 }), /sent no data/);
+  assert.equal(calls, 2);
 });

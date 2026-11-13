@@ -5,7 +5,19 @@
 
 const RETRY = 'Run the same command to try again. Your key and funds are kept.';
 
+// Stop before a step if the turn has ended. The chain refuses a late submission.
+export function assertTurnOpen(turnEndsAt, step, now = Date.now()) {
+  if (Number.isFinite(turnEndsAt) && now >= turnEndsAt) throw new Error(`turn ended before the ${step}`);
+}
+
 const RULES = [
+  {
+    test: /turn ended before the/,
+    explain: ({ message }) => ({
+      title: 'Your turn ended before the contribution was complete.',
+      lines: [`${capitalize(message)}. Nothing was submitted.`, RETRY],
+    }),
+  },
   {
     test: /not on the ceremony's allowlist/,
     explain: ({ address }) => ({

@@ -67,8 +67,9 @@ async function execute(client, kp, tx, guard) {
   const res = await client.core.executeTransaction({ transaction: built, signatures: [signature], include: { effects: true, objectTypes: true } });
   const t = res.Transaction || res.FailedTransaction;
   if (!t || t.digest !== digest || typeof t.status?.success !== 'boolean') throw new Error(`transaction ${digest} has an unresolved outcome; inspect funding.lock`);
-  await client.core.waitForTransaction({ digest });
+  // The outcome is known here. An error in the wait must not keep the lock.
   guard.resolve();
+  await client.core.waitForTransaction({ digest });
   if (res.FailedTransaction || t?.status?.success === false) throw new Error(JSON.stringify(t?.status?.error || res));
   return t;
 }

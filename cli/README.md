@@ -10,8 +10,8 @@ Walrus, and submits it on-chain.
 You need Git and Node.js 22, 24, or 26. With nvm: `nvm install 24 && nvm use 24`.
 
 ```bash
-git clone https://github.com/MystenLabs/groth16-ceremony-sui.git
-./groth16-ceremony-sui/ceremony contribute
+git clone https://github.com/MystenLabs/zklogin-v2-ceremony.git
+./zklogin-v2-ceremony/ceremony contribute
 ```
 
 The CLI asks for:

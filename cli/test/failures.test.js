@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { explainFailure, errorMessage } from '../src/failures.js';
+import { explainFailure, errorMessage, assertTurnOpen } from '../src/failures.js';
 
 const ctx = { address: '0xabc', network: 'testnet' };
 
@@ -32,4 +32,14 @@ test('unknown failures keep the raw message and the cause chain', () => {
   const out = explainFailure(err, ctx);
   assert.match(out.title, /stopped because of an error/);
   assert.equal(out.lines[0], 'outer <- inner');
+});
+
+test('a step after the end of the turn stops with a clear explanation', () => {
+  // No deadline is known, or the deadline is in the future: the step continues.
+  assert.doesNotThrow(() => assertTurnOpen(undefined, 'upload', 1000));
+  assert.doesNotThrow(() => assertTurnOpen(2000, 'upload', 1999));
+  assert.throws(() => assertTurnOpen(2000, 'upload', 2000), /turn ended before the upload/);
+  const out = explainFailure(new Error('turn ended before the submission'), { ...ctx, stage: 'verify' });
+  assert.match(out.title, /Your turn ended/);
+  assert.match(out.lines[0], /Turn ended before the submission\. Nothing was submitted\./);
 });

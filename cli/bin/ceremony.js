@@ -36,7 +36,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
-import { normalizeSuiAddress } from '@mysten/sui/utils';
+import { isValidSuiAddress, normalizeSuiAddress } from '@mysten/sui/utils';
 import { randomEntropy, exportSecretKey, generateKey, restoreKey, contribute, compress, decompress } from '../src/crypto.js';
 import { fetchBlob, uploadToWalrus, resolveSharedBlobContent } from '../src/walrus.js';
 import { reportQueueActivity } from '../src/queue-activity.js';
@@ -47,7 +47,7 @@ import { requireAttestorHealthy } from '../src/health.js';
 import { CEREMONY_ID, readCeremonyConfig, resolveWorkdir, startRunLog, recordRunLog, redact } from '../src/run-context.js';
 import { createUi, formatDuration, visibleText } from '../src/ui.js';
 import { askLine, askHidden, askYesNo } from '../src/prompt.js';
-import { explainFailure, errorMessage } from '../src/failures.js';
+import { explainFailure, errorMessage, assertTurnOpen } from '../src/failures.js';
 import { renderResultCard } from '../src/result-card.js';
 
 // gRPC is the supported transport; JSON-RPC is deprecated (deactivation July 2026).
@@ -191,7 +191,9 @@ function loadState(workdir) {
 }
 function saveState(workdir, st) {
   fs.mkdirSync(workdir, { recursive: true });
-  fs.writeFileSync(statePath(workdir), JSON.stringify(st, null, 2));
+  // The file holds the contribution key. Only the owner can read it.
+  fs.writeFileSync(statePath(workdir), JSON.stringify(st, null, 2), { mode: 0o600 });
+  fs.chmodSync(statePath(workdir), 0o600);
 }
 
 // Best-effort: stop the machine from idle-sleeping for the life of this
@@ -205,6 +207,10 @@ function inhibitSleep() {
     if (process.platform === 'linux') {
       const child = spawn('systemd-inhibit',
         ['--what=sleep:idle', '--why=ceremony contribution', 'sleep', 'infinity'], { stdio: 'ignore' });
+      // A missing helper gives an 'error' event. Without a handler, that event stops the CLI.
+      child.on('error', () => {});
+      // Do not let the helper keep the CLI alive after the work is complete.
+      child.unref();
       process.on('exit', () => child.kill());
       return 'systemd-inhibit';
     }
@@ -531,6 +537,7 @@ async function cmdContribute(ceremonyId, opts) {
 
     // 7. Upload.
     stage = 'upload';
+    assertTurnOpen(session.turnEndsAt, 'upload');
     ui.start('upload', `encoding ${fmtMB(p2c.length)}`);
     const up = await timed(() => uploadToWalrus(suiClient, keypair, network, net, p2c, walrusLog(ui)));
     timings.uploadsec = up.sec;
@@ -539,6 +546,7 @@ async function cmdContribute(ceremonyId, opts) {
 
     // 8. Submit and verify.
     stage = 'verify';
+    assertTurnOpen(session.turnEndsAt, 'submission');
     ui.start('verify', 'submitting on-chain');
     const sd = await submitContribution(suiClient, keypair, head.packageId, ceremonyId, blobId, hashHex, name);
     session.holdingTurn = false;
@@ -768,6 +776,8 @@ async function cmdRefund(ceremonyId, opts) {
   const target = (opts.explicit.ceremony && ceremonyId) || st.ceremonyId || ceremonyId || null;
   ui.detail(`refund on ${network} for ceremony ${target || 'none'}`);
   let refundAddr = opts.to || null;
+  // normalizeSuiAddress adds zeros to a short address. Refuse a short address instead.
+  if (refundAddr && !isValidSuiAddress(refundAddr)) throw new Error('--to must be a full Sui address: 0x and 64 hex digits');
   if (!refundAddr) {
     if (!target) throw new Error('missing refund target: pass --to <addr> or provide a ceremony id');
     const head = await readHead(suiClient, target);

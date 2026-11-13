@@ -71,12 +71,23 @@ export async function readHead(client, ceremonyId) {
 // rejected (our Pending slot moves on without becoming head). Returns
 // 'accepted' | 'rejected' | 'timeout'. When the submit digest is provided, it is
 // enough evidence that our Pending slot existed even if this poll loop missed it.
+// Read the ceremony, and try again after a failed read. One fullnode error is usually temporary.
+export async function readHeadWithRetry(client, ceremonyId, { tries = 3, waitMs = 2000 } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await readHead(client, ceremonyId); }
+    catch (e) {
+      if (attempt >= tries) throw e;
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+}
+
 export async function awaitVerdict(client, ceremonyId, mySharedBlobId, { timeoutMs = 600_000, pollMs = 5000, submitDigest = null } = {}) {
   if (submitDigest) await client.core.waitForTransaction({ digest: submitDigest });
   const deadline = Date.now() + timeoutMs;
   let sawMinePending = !!submitDigest;
   for (;;) {
-    const h = await readHead(client, ceremonyId);
+    const h = await readHeadWithRetry(client, ceremonyId);
     if (h.headSharedBlobId === mySharedBlobId) return 'accepted';
     if (h.slot === 'Pending') {
       if (h.slotBlobId === mySharedBlobId) sawMinePending = true;
@@ -169,7 +180,7 @@ function claimRemainingMs(head, now) {
 export async function claimWhenOpen(client, keypair, packageId, ceremonyId, myAddr, { pollMs = DEFAULT_POLL_SECONDS * 1000, bufferMs = 10_000, log = () => {}, onWaiting = () => {}, checkHealth = async () => {} } = {}) {
   let fails = 0;
   for (;;) {
-    const h = await readHead(client, ceremonyId);
+    const h = await readHeadWithRetry(client, ceremonyId);
     if (h.closed || h.finalized) throw new Error('ceremony is finalized/closed; no further contributions accepted');
     const ours = h.slot === 'Claimed' && h.slotWho === myAddr;
     if (ours) await checkHealth(h);

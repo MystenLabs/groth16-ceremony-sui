@@ -29,20 +29,28 @@ const TRANSIENT_DURABILITY_REASONS = new Set([
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Time limit for one `walrus read`. The call is synchronous, so a stalled read blocks the process.
+// A store has no limit: a stopped store has an unknown outcome and keeps the wallet lock.
+const WALRUS_READ_TIMEOUT_MS = 30 * 60_000;
+
 function mib(n) {
   return `${(n / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-function execWalrusCli(args, { captureStdout = true } = {}) {
+function execWalrusCli(args, { captureStdout = true, timeoutMs } = {}) {
   try {
     return execFileSync('walrus', args, {
       encoding: 'utf8',
       maxBuffer: WALRUS_CLI_MAX_BUFFER,
+      timeout: timeoutMs,
       stdio: ['ignore', captureStdout ? 'pipe' : 'ignore', 'inherit'],
     }) || '';
   } catch (e) {
     if (e?.code === 'ENOENT') {
       throw new Error('walrus CLI not found on PATH; install it with suiup and configure its Sui wallet before coordinator blob I/O');
+    }
+    if (e?.code === 'ETIMEDOUT') {
+      throw new Error(`the walrus CLI did not complete in ${timeoutMs / 60_000} minutes`);
     }
     throw e;
   }
@@ -172,7 +180,7 @@ async function readContentBlobToFile(network, contentBlobId, outFile) {
   const short = contentBlobId.slice(0, 10);
   try {
     log(`  walrus cli read ${short}… downloading`);
-    execWalrusCli(['--context', network, 'read', contentBlobId, '--out', tmp], { captureStdout: false });
+    execWalrusCli(['--context', network, 'read', contentBlobId, '--out', tmp], { captureStdout: false, timeoutMs: WALRUS_READ_TIMEOUT_MS });
 
     fs.renameSync(tmp, outFile);
     const size = fs.statSync(outFile).size;
@@ -248,16 +256,27 @@ async function storeBlob(network, client, file, label) {
 // Read a SharedBlob object and return the durability facts the verifier checks:
 // whether it's shared, plus the wrapped Blob's content id, certified epoch,
 // deletability, and storage end epoch. Returns ok=false for deterministic policy
-// failures; throws for Sui/Walrus read failures. Retries a few times, since a
-// freshly created object can briefly read as not-found while the fullnode indexes it.
+// failures, which include a missing object; throws for Sui/Walrus read failures.
+// resolveBlob tries a missing object again, since a fullnode can index a new object late.
 async function readSharedBlob(network, client, sharedBlobId) {
   let object;
   for (let i = 0; ; i++) {
-    try { ({ object } = await client.core.getObject({ objectId: sharedBlobId, include: { json: true, owner: true } })); break; }
-    catch (e) { if (i >= DURABILITY_RETRIES) throw e; await sleep(DURABILITY_RETRY_MS); }
+    try {
+      const { objects: [result] } = await client.core.getObjects({ objectIds: [sharedBlobId], include: { json: true, owner: true } });
+      // An Error value in the list is the fullnode answer for this object. A transport failure throws.
+      if (result instanceof Error) {
+        if (/not found|does not exist/i.test(result.message)) return { ok: false, reason: 'object not found' };
+        throw result;
+      }
+      object = result;
+      break;
+    } catch (e) {
+      if (i >= DURABILITY_RETRIES) throw e;
+      await sleep(DURABILITY_RETRY_MS);
+    }
   }
-  const expectedType = await sharedBlobType(network, client);
   if (!object) return { ok: false, reason: 'object not found' };
+  const expectedType = await sharedBlobType(network, client);
   const actualType = object.type ? normalizeStructTag(object.type) : '';
   if (actualType !== expectedType) {
     return { ok: false, reason: `object is ${object.type || 'unknown type'}, expected ${expectedType}` };

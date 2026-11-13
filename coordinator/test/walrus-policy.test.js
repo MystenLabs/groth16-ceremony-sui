@@ -5,6 +5,7 @@ import {
   currentEpochFromSystemState,
   parseWalrusStoreJson,
   parseWalrusBlobIdJson,
+  resolveBlob,
 } from '../src/crypto/walrus.js';
 
 test('checkBlobIsDurable enforces shared permanent unexpired storage window', () => {
@@ -62,4 +63,15 @@ test('Walrus CLI blob-id JSON parser extracts the locally encoded content id', (
     () => parseWalrusBlobIdJson('{}'),
     /did not include a content blob id/,
   );
+});
+
+test('resolveBlob rejects a missing object and throws for a read failure', async () => {
+  const id = `0x${'ab'.repeat(32)}`;
+  // The fullnode answers that the object is missing. The result is a policy reject.
+  const answersMissing = { core: { getObjects: async () => ({ objects: [new Error(`Object ${id} not found`)] }) } };
+  const missing = await resolveBlob('testnet', answersMissing, id, { retries: 1, retryMs: 0 });
+  assert.deepEqual(missing, { ok: false, reason: 'object not found' });
+  // A proxy answers 404. This says nothing about the blob, so the caller must try again.
+  const transportFails = { core: { getObjects: async () => { throw new Error('Not Found'); } } };
+  await assert.rejects(resolveBlob('testnet', transportFails, id, { retries: 0, retryMs: 0 }), /Not Found/);
 });
