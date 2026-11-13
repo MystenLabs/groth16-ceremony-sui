@@ -36,8 +36,7 @@ export async function runVerifySteps({ headPath, subPath, baseZkey, ptau, workdi
   };
   const snarkLog = { ...snarkLogger(console.warn), info() {} };
   const fullPath = path.join(workdir, `full-${path.basename(subPath).slice(0, 12)}.zkey`);
-  // Note: Exceptions thrown by snarkjs.js leave the slot Pending for operator attention.
-  // TODO: Should we wire it up so that we receive a message on Slack when the below throws (assuming its easy to setup)?
+  // Each step runs in the snarkjs.js wrapper. The wrapper changes an exception into a reject.
   try {
     // Read the submission through the memory reader, as the contributor CLI does.
     // The disk reader returns zeros for a read past the end of a file.
