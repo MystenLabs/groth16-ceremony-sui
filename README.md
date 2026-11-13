@@ -1,4 +1,4 @@
-# groth16-sui-ceremony
+# zklogin-v2-ceremony
 
 A Groth16 phase-2 trusted-setup ceremony, orchestrated on Sui and stored on
 Walrus. Generic across circuits (zkLogin v2 is the first user); nothing here is
@@ -21,8 +21,8 @@ phase-1 file (`pot_final.ptau`) and commits its hash on-chain as `phase1_digest`
 To contribute, install Git and Node.js 22, 24, or 26. Then run:
 
 ```bash
-git clone https://github.com/MystenLabs/groth16-ceremony-sui.git
-./groth16-ceremony-sui/ceremony contribute
+git clone https://github.com/MystenLabs/zklogin-v2-ceremony.git
+./zklogin-v2-ceremony/ceremony contribute
 ```
 
 The command asks for the organizer's funding link, your public name, and some
