@@ -217,6 +217,23 @@ Walrus blobs are cached under the run's `blobs/` directory.
 node coordinator/src/audit.js --run "$RUN" --network "$NETWORK"
 ```
 
+### 9. After the audit: consider an immutable package
+
+The organizer key holds the `UpgradeCap` of the Move package. An upgrade can add
+a function that changes the record of a closed ceremony. An immutable package
+removes that possibility.
+
+- Do this only after the ceremony is closed and the audit passes. Before that,
+  an immutable package blocks the correction of a contract bug.
+- The step is permanent.
+- The id is in `manifest.json` as `package_upgrade_capability`.
+- All ceremonies on the same package lose the upgrade path together.
+
+```sh
+sui client call --package 0x2 --module package --function make_immutable \
+  --args <UpgradeCap id>
+```
+
 ## Slot duration
 
 Slot duration is stored on each ceremony as `slot_duration_ms`; Move has no default.
