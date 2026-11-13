@@ -348,6 +348,7 @@ async function seal() {
     baseZkey: BASE_ZKEY,
     ptau: BASE_PTAU,
     workdir: ARTIFACT_WORKDIR,
+    blobCacheDir: paths.blobs,
     beaconExp: o['beacon-exp'],
     log,
   });
