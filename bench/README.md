@@ -6,7 +6,8 @@ per-step timings, to compare hardware before picking a coordinator host.
 It **imports the real functions** from `coordinator/src/crypto` (`readBlob`,
 `runVerifySteps`) — the same code the attestor runs — so the numbers can't
 drift. It pulls a real **head + contribution** from a live ceremony on chain and
-runs `download → v2paramsExtends → decompress → assemble → verifyFromInit → compare contribution hash`.
+runs `download → v2paramsExtends → transcript checks (plain entries, contribution hash) → decompress → assemble → verifyFromInit`.
+The attestor rejects a beacon entry. For a Closed ceremony, give `--head` and `--sub` of a contribution, not of the seal blob.
 The expected hash comes from the selected on-chain contribution. With explicit
 blob IDs, supply that contribution's recorded hash using `--expected-hash`.
 

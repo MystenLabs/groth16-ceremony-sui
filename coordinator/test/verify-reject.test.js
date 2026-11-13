@@ -16,6 +16,7 @@ import {
 } from '../src/lib/verify_contribution.js';
 
 import { runVerifySteps } from '../src/crypto/verify_contribution.js';
+import { contribute, compress, decompress } from '../../cli/src/crypto.js';
 
 const snLog = { info() {}, debug() {}, warn() {}, error() {} };
 
@@ -95,6 +96,124 @@ test('runVerifySteps rejects malformed inputs and filesystem errors', { timeout:
     assert.match(result.reason, /verification failed/);
   });
 
+  await t.test('the attestor and the CLI agree on an honest, an inflated, and a padded blob', async () => {
+    // Run the CLI steps of the next contributor. Return the error message, or null.
+    const cliExtendError = async (bytes) => {
+      try {
+        const p2u = await decompress(new Uint8Array(bytes), snLog);
+        const next = await contribute(p2u, 'next participant', 'next entropy', snLog);
+        await compress(next.bytes, snLog);
+        return null;
+      } catch (error) {
+        return error?.message || String(error);
+      }
+    };
+    const honest = fs.readFileSync(subP2c);
+    // The header declares one section more than the file contains.
+    const inflated = Buffer.from(honest);
+    inflated.writeUInt32LE(inflated.readUInt32LE(8) + 1, 8);
+    const padded = Buffer.concat([honest, Buffer.alloc(16)]);
+
+    const cases = [['honest', honest, true], ['inflated-count', inflated, false], ['trailing-bytes', padded, true]];
+    for (const [label, bytes, expected] of cases) {
+      const file = path.join(tmp, `${label}.p2c`);
+      fs.writeFileSync(file, bytes);
+      const verdict = await runVerifySteps({ ...args, subPath: file });
+      const cliError = await cliExtendError(bytes);
+      assert.equal(verdict.ok, expected, `attestor verdict for ${label}: ${verdict.reason}`);
+      if (expected) {
+        assert.equal(cliError, null, `CLI result for ${label}`);
+      } else {
+        assert.match(verdict.reason, /Reading out of bounds/);
+        assert.match(cliError, /Reading out of bounds/);
+      }
+    }
+  });
+
+  await t.test('a beacon entry in a submission rejects before the slow steps', async () => {
+    // Add a beacon entry to the honest contribution, as the seal step does.
+    const fullZkey = path.join(tmp, 'full.zkey');
+    const beaconZkey = path.join(tmp, 'beacon.zkey');
+    const beaconP2u = path.join(tmp, 'beacon.p2u');
+    const beaconP2c = path.join(tmp, 'beacon.p2c');
+    await snarkjs.zKey.assemble(baseZkey, contribP2u, fullZkey, snLog);
+    const beaconHash = await snarkjs.zKey.beacon(fullZkey, beaconZkey, 'beacon', 'ab'.repeat(32), 10, snLog);
+    await snarkjs.zKey.extract(beaconZkey, beaconP2u, snLog);
+    await snarkjs.zKey.compressV2Params(beaconP2u, beaconP2c, snLog);
+    // Add a plain contribution after the beacon entry.
+    const laterP2u = path.join(tmp, 'later.p2u');
+    const laterP2c = path.join(tmp, 'later.p2c');
+    const laterHash = await snarkjs.zKey.contribute(beaconP2u, laterP2u, 'later participant', 'later entropy', snLog);
+    await snarkjs.zKey.compressV2Params(laterP2u, laterP2c, snLog);
+
+    // Add a plain contribution to the honest head. Then change entry 1 to a beacon type.
+    // The entry hash does not include the type, so the extends check passes.
+    const secondP2u = path.join(tmp, 'second.p2u');
+    const secondP2c = path.join(tmp, 'second.p2c');
+    const forgedP2c = path.join(tmp, 'forged-type.p2c');
+    const secondHash = await snarkjs.zKey.contribute(contribP2u, secondP2u, 'second', 'second entropy', snLog);
+    await snarkjs.zKey.compressV2Params(secondP2u, secondP2c, snLog);
+    const second = fs.readFileSync(secondP2c);
+    const parts = [second.subarray(0, 12)];
+    for (let offset = 12; offset < second.length;) {
+      const end = offset + 12 + Number(second.readBigUInt64LE(offset + 4));
+      let body = second.subarray(offset + 12, end);
+      if (second.readUInt32LE(offset) === 10) {
+        // Entry 1 ends with: type (u32), parameter length (u32), then [1, 11, 'participant'].
+        const name = body.indexOf(Buffer.from('participant'));
+        const fields = Buffer.alloc(8);
+        fields.writeUInt32LE(1, 0);
+        fields.writeUInt32LE(13 + 36, 4);
+        const beacon = Buffer.concat([Buffer.from([2, 63, 3, 32]), Buffer.alloc(32, 0xab)]);
+        body = Buffer.concat([body.subarray(0, name - 10), fields, body.subarray(name - 2, name + 11), beacon, body.subarray(name + 11)]);
+      }
+      const header = Buffer.from(second.subarray(offset, offset + 12));
+      header.writeBigUInt64LE(BigInt(body.length), 4);
+      parts.push(header, body);
+      offset = end;
+    }
+    fs.writeFileSync(forgedP2c, Buffer.concat(parts));
+
+    const cases = [
+      ['the new entry is a beacon entry', subP2c, beaconP2c, beaconHash],
+      ['an earlier entry is a beacon entry', beaconP2c, laterP2c, laterHash],
+      ['an earlier plain entry is changed to a beacon type', subP2c, forgedP2c, secondHash],
+    ];
+    for (const [label, headPath, subPath, hash] of cases) {
+      const steps = [];
+      const result = await runVerifySteps({
+        ...args,
+        headPath,
+        subPath,
+        expectedHash: Buffer.from(hash).toString('hex'),
+        step: (key, fn) => { steps.push(key); return fn(); },
+      });
+      assert.deepEqual(result, { ok: false, reason: 'submission contains an entry that is not a plain contribution' }, label);
+      assert.deepEqual(steps, ['load', 'extends', 'transcript'], label);
+    }
+  });
+
+  await t.test('a section that declares more bytes than the file contains rejects', async () => {
+    const bytes = fs.readFileSync(subP2c);
+    const header = bytes.subarray(0, 12);
+    const sections = [];
+    for (let offset = 12; offset < bytes.length;) {
+      const end = offset + 12 + Number(bytes.readBigUInt64LE(offset + 4));
+      sections.push({ id: bytes.readUInt32LE(offset), bytes: bytes.subarray(offset, end) });
+      offset = end;
+    }
+    // Put section 8 last. Then only its body goes past the end of the file.
+    const last = Buffer.from(sections.find((section) => section.id === 8).bytes);
+    last.writeBigUInt64LE(2n ** 30n, 4);
+    const others = sections.filter((section) => section.id !== 8).map((section) => section.bytes);
+    const oversized = path.join(tmp, 'oversized-section.p2c');
+    fs.writeFileSync(oversized, Buffer.concat([header, ...others, last]));
+
+    const result = await runVerifySteps({ ...args, subPath: oversized });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /verification failed \(decompress:/);
+  });
+
   await t.test('corrupt compressed points reject through full verification', async () => {
     const corrupt = path.join(tmp, 'corrupt-points.p2c');
     const bytes = fs.readFileSync(subP2c);
@@ -137,10 +256,9 @@ test('checkSubmissionSize enforces a fixed upper bound', () => {
   assert.equal(checkSubmissionSize(undefined).ok, false);
 });
 
-// Exception propagation only covers failures that surface as catchable
-// exceptions. A blob whose header declares an absurd
-// section count drives the parser into an unbounded allocation, and a V8
-// heap-OOM abort is process-fatal: no try/catch can see it.
+// Exception handling covers only the failures that code can catch. A V8
+// heap-OOM abort kills the process. One subtest fills a small worker heap to
+// cause that abort.
 test('runVerifyStepsIsolated survives a blob that kills the process it parses in', { timeout: 180_000 }, async (t) => {
   const prevCap = process.env.VERIFY_MAX_OLD_SPACE_MB;
   process.env.VERIFY_MAX_OLD_SPACE_MB = '128';
@@ -179,13 +297,29 @@ test('runVerifyStepsIsolated survives a blob that kills the process it parses in
   await snarkjs.zKey.compressV2Params(contribP2u, subP2c, snLog);
   const args = { headPath: headP2c, baseZkey, ptau, workdir: tmp, expectedHash: Buffer.from(contributionHash).toString('hex') };
 
-  await t.test('an unbounded section count is a reject, not a coordinator death', async () => {
-    // 'p2c\0' + version=1 + nSections=0xFFFFFFFF
-    const evil = path.join(tmp, 'evil.p2c');
+  await t.test('an unbounded section count is a reject, and the worker stays alive', async () => {
+    // 'p2c\0' + version=1 + nSections=0xFFFFFFFF, with no sections after the header.
+    const evil = path.join(tmp, 'evil-count.p2c');
     fs.writeFileSync(evil, Buffer.from('70326300010000 00ffffffff'.replace(/ /g, ''), 'hex'));
     const r = await runVerifyStepsIsolated({ ...args, subPath: evil });
     assert.equal(r.ok, false);
-    assert.match(r.reason, /malformed submission/);
+    assert.match(r.reason, /verification failed \(extends: Reading out of bounds\)/);
+    assert.deepEqual(Object.keys(r.timings), ['load', 'extends']);
+  });
+
+  await t.test('a blob that fills the worker heap is a reject, not a coordinator death', async () => {
+    // 'p2c\0' + version=1 + 3,000,000 empty sections that the file does contain.
+    const count = 3_000_000;
+    const bytes = Buffer.alloc(12 + 12 * count);
+    bytes.write('p2c\0', 0, 'latin1');
+    bytes.writeUInt32LE(1, 4);
+    bytes.writeUInt32LE(count, 8);
+    for (let i = 0; i < count; i++) bytes.writeUInt32LE(1, 12 + 12 * i);
+    const evil = path.join(tmp, 'evil-heap.p2c');
+    fs.writeFileSync(evil, bytes);
+    const r = await runVerifyStepsIsolated({ ...args, subPath: evil });
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /malformed submission \(verify process died/);
   });
 
   await t.test('a local artifact problem rejects through the worker', async () => {

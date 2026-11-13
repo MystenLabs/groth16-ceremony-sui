@@ -3,7 +3,9 @@
 // and a size bound (both pre-download), then run the crypto:
 //   1. position — the blob extends the current head by exactly one contribution
 //      (v2paramsExtends; guards against building on an old head or a self-chain).
-//   2. validity — reinject the frozen base sections (3-7) to reform a full zkey,
+//   2. transcript — each entry is a plain contribution, and the last entry hash
+//      is the on-chain contribution hash.
+//   3. validity — reinject the frozen base sections (3-7) to reform a full zkey,
 //      then run snarkjs's full-chain verifier against the ptau (verifyFromInit).
 // Blobs are read via readBlob, which resolves the SharedBlob id, enforces the
 // durable blob policy, caches the content blob on disk, and returns a local path.
@@ -20,16 +22,11 @@ import { readBlob, resolveBlob } from '../crypto/walrus.js';
 
 const WORKER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'verify_worker.js');
 
-// Ceiling for the isolated verify. Has to sit above what a legitimate 2^21
-// verify needs (assemble + verifyFromInit peak in the low GBs) and below the
-// host's RAM, so that a blob whose declared section count or section size drives
-// an unbounded allocation dies as a bounded child instead of taking the
-// coordinator with it. It is a cap, not a reservation.
-//
-// Wall-clock ceiling. Not every hostile input crashes: a bogus n8q in the header
-// sends the parser into a multi-GB allocation plus a scan over ~4e9 bytes, which
-// stalls rather than dies.
+// Heap limit for the isolated verification. It must be above the need of a
+// legitimate 2^21 run (low GBs) and below the host RAM. It is a limit, not a reservation.
+// A blob that fills the heap stops the child, not the coordinator.
 const maxOldSpaceMb = () => Number(process.env.VERIFY_MAX_OLD_SPACE_MB) || 8192;
+// Time limit for the isolated verification. It stops a child that an input keeps busy.
 export const verificationTimeoutMs = () => Number(process.env.VERIFY_TIMEOUT_MS) || 10 * 60 * 1000;
 
 const STEP_LABELS = {

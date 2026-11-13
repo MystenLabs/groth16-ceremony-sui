@@ -55,7 +55,7 @@ test('offline ceremony: genesis, CLI contribution, isolated verification, beacon
   await verifyBaseCircuit(baseZkey, headP2c);
   const verifyArgs = { headPath: genesisP2c, subPath: headP2c, baseZkey, ptau, workdir: tmp };
   const verified = await runVerifyStepsIsolated({ ...verifyArgs, expectedHash: contributed.hashHex });
-  assert.deepEqual(Object.keys(verified.timings), ['extends', 'decompress', 'assemble', 'verifyFromInit', 'hash']);
+  assert.deepEqual(Object.keys(verified.timings), ['load', 'extends', 'transcript', 'decompress', 'assemble', 'verifyFromInit']);
   for (const seconds of Object.values(verified.timings)) assert.ok(Number.isFinite(seconds) && seconds >= 0);
   assert.equal(verified.ok, true);
   await t.test('a failed verifyFromInit result rejects explicitly', async () => {
@@ -91,7 +91,7 @@ test('offline ceremony: genesis, CLI contribution, isolated verification, beacon
   assert.equal(wrongHash.ok, false);
   assert.match(wrongHash.reason, /contribution hash mismatch/);
   const rejected = await runVerifyStepsIsolated({ ...verifyArgs, headPath: headP2c, expectedHash: contributed.hashHex });
-  assert.deepEqual(Object.keys(rejected.timings), ['extends']);
+  assert.deepEqual(Object.keys(rejected.timings), ['load', 'extends']);
   const oldHead = rejected;
   assert.equal(oldHead.ok, false);
   assert.match(oldHead.reason, /does not extend head/);
