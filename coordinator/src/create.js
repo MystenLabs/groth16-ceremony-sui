@@ -8,11 +8,8 @@
 //     --ptau pot_final.ptau --auditors 0xAUD1,0xAUD2 --threshold 2 \
 //     --run zklogin-ceremony --permissionless
 //
-// `phase1_digest` is the BLAKE2b-512 / b2sum of the adopted public phase-1
-// `phase1/pot_final.ptau` from:
-//   https://github.com/sui-foundation/zklogin-ceremony-contributions/tree/main/phase1
-// Published b2sum:
-//   516fdf98bef4ab474bf01e336c801b275bdb4c5209ad06351b1f1ebc6f7060b77c11c9adaf861a776e77c2eff9f22cb4dae29fcab12f97489a9f049339904b3c
+// `phase1_digest` is the BLAKE2b-512 / b2sum of the phase-1 file.
+// coordinator/artifacts/README.md describes that file.
 // Pass --ptau <pot_final.ptau> to hash that file locally, or --phase1-hash
 // <hex> directly. The genesis params come later via `admin.js start-phase2`.
 // Writes the run-specific ceremony manifest.

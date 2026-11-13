@@ -12,9 +12,9 @@ to Walrus, and submits it. A central **coordinator** (admin == attestor)
 verifies each contribution off-chain and `accept`s it to advance the chain — a
 two-phase commit, so a bad or missing contribution never corrupts the head.
 
-Phase 1 (powers of tau) is **inherited, not run here**: the ceremony adopts the
-public [sui-foundation phase-1 transparency](https://github.com/sui-foundation/zklogin-ceremony-contributions/tree/main/phase1)
-output (`pot_final.ptau`) and commits its hash on-chain as `phase1_digest`.
+Phase 1 (powers of tau) is **inherited, not run here**: the ceremony adopts a
+phase-1 file (`pot_final.ptau`) and commits its hash on-chain as `phase1_digest`.
+[`coordinator/artifacts/README.md`](coordinator/artifacts/README.md) describes that file.
 
 ## Packages
 
@@ -92,9 +92,9 @@ node coordinator/src/key.js init --run "$RUN"
 # Install/update the Walrus CLI used by coordinator blob I/O.
 coordinator/scripts/install-walrus.sh
 
-# 2. adopt phase 1: download the public pot_final.ptau into coordinator/artifacts/
-curl -L -o coordinator/artifacts/pot_final.ptau \
-  https://media.githubusercontent.com/media/sui-foundation/zklogin-ceremony-contributions/main/phase1/pot_final.ptau
+# 2. adopt phase 1: copy the phase-1 file into coordinator/artifacts/
+#    (coordinator/artifacts/README.md describes the file)
+cp <phase-1 file> coordinator/artifacts/pot_final.ptau
 
 # Optional read-only input identity checks, useful before or during a run.
 walrus --context "$NETWORK" --json blob-id circuit.r1cs
@@ -246,8 +246,8 @@ head-extension check + `verifyFromInit` + `accept` → `finalize_phase2` → `se
 → audit — was validated end-to-end on live testnet on 2026-09-08 with a small
 circuit. It closed with one participant plus the final beacon and ended with
 `audit OK`. An earlier revision was also exercised against the real zkLogin
-circuit (~1M constraints, `verifyFromInit` ~60 s). Phase 1 is the adopted public
-sui-foundation powers-of-tau (`pot_final.ptau`, 2^21); the genesis is `g16s` of
+circuit (~1M constraints, `verifyFromInit` ~60 s). Phase 1 is the adopted
+powers-of-tau file (`pot_final.ptau`, 2^21); the genesis is `g16s` of
 that ptau + the `--O2` circuit r1cs.
 
 

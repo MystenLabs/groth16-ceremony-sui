@@ -17,7 +17,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
 import { makeClient, readCeremony } from './lib/chain.js';
-import { loadIds, log, net, resolveCeremonyPaths, standaloneAuditPaths, PHASE1_URL } from './lib/config.js';
+import { loadIds, log, net, resolveCeremonyPaths, standaloneAuditPaths } from './lib/config.js';
 import { checkFinalCeremony, verifyFinalArtifacts } from './crypto/audit.js';
 import { readBlob, blobIdForFile } from './crypto/walrus.js';
 
@@ -30,7 +30,7 @@ const { values: o, positionals } = parseArgs({ allowPositionals: true, options: 
   workdir: { type: 'string' },
   'blob-cache': { type: 'string' },
   ptau: { type: 'string' },
-  'phase1-url': { type: 'string', default: PHASE1_URL },
+  'phase1-url': { type: 'string' },
   fresh: { type: 'boolean' },
 } });
 
@@ -42,7 +42,7 @@ const manifestIds = paths ? loadIds(o.network, paths.manifest) : null;
 const CER = o.ceremony || positionals[0] || manifestIds?.ceremonyId;
 if (!CER) {
   console.error('usage: node coordinator/src/audit.js --run <name> [--network testnet] [--ptau pot_final.ptau]');
-  console.error('   or: node coordinator/src/audit.js <closed-ceremony-object-id> [--workdir ./audit-work]');
+  console.error('   or: node coordinator/src/audit.js <closed-ceremony-object-id> (--ptau <file> | --phase1-url <address>) [--workdir ./audit-work]');
   process.exit(1);
 }
 net(o.network);
@@ -82,6 +82,8 @@ async function ensurePtau(runDir) {
   }
   const ptau = path.join(runDir, 'pot_final.ptau');
   if (o.fresh || !fs.existsSync(ptau)) {
+    // There is no default address. Each ceremony has its own phase-1 file.
+    assertOk(o['phase1-url'], 'no phase-1 file is available; give --ptau <file> or --phase1-url <address>');
     log(`downloading phase-1 ptau from ${o['phase1-url']}`);
     await download(o['phase1-url'], ptau);
   }
@@ -109,6 +111,8 @@ async function main() {
   log(`blob cache ${blobCache}`);
   log('walrus blob reads via cli');
   const { chain } = checkFinalCeremony(ceremony);
+  // Find the phase-1 file first. The audit then stops before the other downloads if it is missing.
+  const ptau = await ensurePtau(runDir);
 
   const r1cs = await fetchShared({
     network: o.network,
@@ -141,7 +145,6 @@ async function main() {
     suffix: '.json',
   });
 
-  const ptau = await ensurePtau(runDir);
   const contributions = [];
   for (let i = 0; i < chain.length; i++) {
     const c = chain[i];
